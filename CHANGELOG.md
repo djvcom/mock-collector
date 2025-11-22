@@ -22,7 +22,3 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Arc-optimised storage for resource and scope attributes
 - Comprehensive error types with `MockServerError`
 - `MockCollector` inspection methods (`logs()`, `log_count()`, `clear()`, `dump()`)
-
-## [0.1.0] - Unreleased
-
-Initial development version.

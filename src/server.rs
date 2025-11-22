@@ -4,6 +4,10 @@ use opentelemetry_proto::tonic::collector::logs::v1::{
     ExportLogsServiceRequest, ExportLogsServiceResponse,
     logs_service_server::{LogsService, LogsServiceServer},
 };
+use opentelemetry_proto::tonic::collector::trace::v1::{
+    ExportTraceServiceRequest, ExportTraceServiceResponse,
+    trace_service_server::{TraceService, TraceServiceServer},
+};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -12,6 +16,107 @@ use tonic::{Request, Response, Status};
 
 use crate::collector::MockCollector;
 use crate::error::MockServerError;
+
+/// A builder for configuring a mock OTLP server.
+///
+/// # Example
+///
+/// ```no_run
+/// use mock_collector::{MockServer, Protocol};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let server = MockServer::builder()
+///     .protocol(Protocol::HttpJson)
+///     .port(4318)
+///     .start()
+///     .await?;
+/// # Ok(())
+/// # }
+/// ```
+#[derive(Debug, Default)]
+pub struct MockServerBuilder {
+    collector: Option<Arc<RwLock<MockCollector>>>,
+    protocol: Option<Protocol>,
+    host: Option<IpAddr>,
+    port: Option<u16>,
+}
+
+impl MockServerBuilder {
+    /// Creates a new builder with default settings.
+    ///
+    /// Defaults:
+    /// - Protocol: gRPC
+    /// - Host: localhost (127.0.0.1)
+    /// - Port: 0 (OS-assigned)
+    /// - Collector: new empty collector
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Sets the collector to use.
+    ///
+    /// By default, a new collector is created. Use this to share a collector
+    /// between multiple servers.
+    #[must_use]
+    pub fn collector(mut self, collector: Arc<RwLock<MockCollector>>) -> Self {
+        self.collector = Some(collector);
+        self
+    }
+
+    /// Sets the protocol (gRPC, HTTP/JSON, or HTTP/Protobuf).
+    ///
+    /// Default: gRPC
+    #[must_use]
+    pub fn protocol(mut self, protocol: Protocol) -> Self {
+        self.protocol = Some(protocol);
+        self
+    }
+
+    /// Sets the host to bind to.
+    ///
+    /// Default: localhost (127.0.0.1)
+    #[must_use]
+    pub fn host(mut self, host: IpAddr) -> Self {
+        self.host = Some(host);
+        self
+    }
+
+    /// Sets the port to bind to.
+    ///
+    /// Use 0 for an OS-assigned port. Retrieve the actual port using
+    /// `ServerHandle::addr()` after starting.
+    ///
+    /// Default: 0 (OS-assigned)
+    #[must_use]
+    pub fn port(mut self, port: u16) -> Self {
+        self.port = Some(port);
+        self
+    }
+
+    /// Builds the `MockServer` without starting it.
+    ///
+    /// Call `.start()` on the returned `MockServer` to actually start the server,
+    /// or use `builder.start()` to build and start in one step.
+    pub fn build(self) -> MockServer {
+        MockServer {
+            collector: self
+                .collector
+                .unwrap_or_else(|| Arc::new(RwLock::new(MockCollector::new()))),
+            protocol: self.protocol.unwrap_or(Protocol::Grpc),
+            host: self.host.unwrap_or(IpAddr::V4(Ipv4Addr::LOCALHOST)),
+            port: self.port.unwrap_or(0),
+        }
+    }
+
+    /// Builds and starts the server in one step.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if the server fails to bind to the specified address.
+    pub async fn start(self) -> Result<ServerHandle, MockServerError> {
+        self.build().start().await
+    }
+}
 
 /// A mock OTLP server for testing.
 pub struct MockServer {
@@ -62,6 +167,39 @@ impl MockServer {
         }
     }
 
+    /// Returns a builder for configuring the server.
+    ///
+    /// Use this for simplified initialization with defaults (gRPC on OS-assigned port):
+    ///
+    /// ```no_run
+    /// use mock_collector::MockServer;
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// // Start with defaults
+    /// let server = MockServer::builder().start().await?;
+    /// println!("Server running on {}", server.addr());
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Or configure specific options:
+    ///
+    /// ```no_run
+    /// use mock_collector::{MockServer, Protocol};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let server = MockServer::builder()
+    ///     .protocol(Protocol::HttpJson)
+    ///     .port(4318)
+    ///     .start()
+    ///     .await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub fn builder() -> MockServerBuilder {
+        MockServerBuilder::new()
+    }
+
     /// Starts the server and returns a handle for interacting with it.
     ///
     /// # Errors
@@ -77,7 +215,10 @@ impl MockServer {
 
     async fn start_grpc(self) -> Result<ServerHandle, MockServerError> {
         let collector = self.collector.clone();
-        let service = GrpcLogsService { collector };
+        let logs_service = GrpcLogsService {
+            collector: collector.clone(),
+        };
+        let trace_service = GrpcTraceService { collector };
 
         let addr = SocketAddr::new(self.host, self.port);
         let listener = TcpListener::bind(addr)
@@ -91,7 +232,8 @@ impl MockServer {
 
         let server_task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                .add_service(LogsServiceServer::new(service))
+                .add_service(LogsServiceServer::new(logs_service))
+                .add_service(TraceServiceServer::new(trace_service))
                 .serve_with_incoming_shutdown(
                     tokio_stream::wrappers::TcpListenerStream::new(listener),
                     async {
@@ -123,6 +265,7 @@ impl MockServer {
 
         let app = Router::new()
             .route("/v1/logs", post(handle_http_logs))
+            .route("/v1/traces", post(handle_http_traces))
             .with_state(HttpServerState {
                 collector: collector.clone(),
                 protocol,
@@ -256,6 +399,27 @@ impl LogsService for GrpcLogsService {
     }
 }
 
+#[derive(Clone)]
+struct GrpcTraceService {
+    collector: Arc<RwLock<MockCollector>>,
+}
+
+#[tonic::async_trait]
+impl TraceService for GrpcTraceService {
+    async fn export(
+        &self,
+        request: Request<ExportTraceServiceRequest>,
+    ) -> Result<Response<ExportTraceServiceResponse>, Status> {
+        let req = request.into_inner();
+
+        self.collector.write().await.add_traces(req);
+
+        Ok(Response::new(ExportTraceServiceResponse {
+            partial_success: None,
+        }))
+    }
+}
+
 // HTTP protocol type
 #[derive(Clone, Copy, Debug)]
 enum HttpProtocol {
@@ -264,7 +428,7 @@ enum HttpProtocol {
 }
 
 impl HttpProtocol {
-    fn decode(&self, body: &[u8]) -> Result<ExportLogsServiceRequest, MockServerError> {
+    fn decode_logs(&self, body: &[u8]) -> Result<ExportLogsServiceRequest, MockServerError> {
         match self {
             HttpProtocol::Json => {
                 serde_json::from_slice(body).map_err(MockServerError::JsonParseError)
@@ -275,7 +439,38 @@ impl HttpProtocol {
         }
     }
 
-    fn encode(&self, response: &ExportLogsServiceResponse) -> Result<Vec<u8>, MockServerError> {
+    fn encode_logs(
+        &self,
+        response: &ExportLogsServiceResponse,
+    ) -> Result<Vec<u8>, MockServerError> {
+        match self {
+            HttpProtocol::Json => {
+                serde_json::to_vec(response).map_err(MockServerError::JsonParseError)
+            }
+            HttpProtocol::Binary => {
+                let mut buf = Vec::new();
+                prost::Message::encode(response, &mut buf)
+                    .map_err(|e| MockServerError::EncodeError(e.to_string()))?;
+                Ok(buf)
+            }
+        }
+    }
+
+    fn decode_traces(&self, body: &[u8]) -> Result<ExportTraceServiceRequest, MockServerError> {
+        match self {
+            HttpProtocol::Json => {
+                serde_json::from_slice(body).map_err(MockServerError::JsonParseError)
+            }
+            HttpProtocol::Binary => {
+                prost::Message::decode(body).map_err(MockServerError::ProtobufParseError)
+            }
+        }
+    }
+
+    fn encode_traces(
+        &self,
+        response: &ExportTraceServiceResponse,
+    ) -> Result<Vec<u8>, MockServerError> {
         match self {
             HttpProtocol::Json => {
                 serde_json::to_vec(response).map_err(MockServerError::JsonParseError)
@@ -308,7 +503,7 @@ async fn handle_http_logs(
     State(state): State<HttpServerState>,
     body: axum::body::Bytes,
 ) -> impl IntoResponse {
-    let request = match state.protocol.decode(&body) {
+    let request = match state.protocol.decode_logs(&body) {
         Ok(req) => req,
         Err(e) => {
             return (
@@ -325,7 +520,46 @@ async fn handle_http_logs(
         partial_success: None,
     };
 
-    match state.protocol.encode(&response) {
+    match state.protocol.encode_logs(&response) {
+        Ok(bytes) => (
+            StatusCode::OK,
+            [(
+                axum::http::header::CONTENT_TYPE,
+                state.protocol.content_type(),
+            )],
+            bytes,
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to encode response: {}", e),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_http_traces(
+    State(state): State<HttpServerState>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let request = match state.protocol.decode_traces(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("Failed to parse request: {}", e),
+            )
+                .into_response();
+        }
+    };
+
+    state.collector.write().await.add_traces(request);
+
+    let response = ExportTraceServiceResponse {
+        partial_success: None,
+    };
+
+    match state.protocol.encode_traces(&response) {
         Ok(bytes) => (
             StatusCode::OK,
             [(

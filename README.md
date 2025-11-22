@@ -4,10 +4,12 @@ A mock OpenTelemetry OTLP collector server for testing applications that export 
 
 ## Features
 
+- **Multiple Signal Support**: Logs and Traces (Metrics coming soon)
 - **Multiple Protocol Support**: gRPC, HTTP/Protobuf, and HTTP/JSON
+- **Single Collector**: One collector handles all signals - test logs and traces together
 - **Fluent Assertion API**: Easy-to-use builder pattern for test assertions
-- **Flexible Matching**: Match logs by body, attributes, resource attributes, and scope attributes
-- **Count-Based Assertions**: Assert exact counts, minimum, or maximum number of matching logs
+- **Flexible Matching**: Match by body/name, attributes, resource attributes, and scope attributes
+- **Count-Based Assertions**: Assert exact counts, minimum, or maximum number of matches
 - **Async-Ready**: Built with Tokio for async/await compatibility
 - **Graceful Shutdown**: Proper resource cleanup with shutdown signals
 
@@ -95,9 +97,70 @@ async fn test_http_binary_logging() {
 }
 ```
 
+### Testing Traces
+
+The same server automatically supports traces! Simply use the trace assertion API:
+
+```rust
+use mock_collector::{MockServer, Protocol};
+
+#[tokio::test]
+async fn test_traces() {
+    // Start server with default settings (gRPC on OS-assigned port)
+    let server = MockServer::builder().start().await.unwrap();
+
+    // Your application exports traces to the server...
+    // For gRPC: server.addr()
+    // For HTTP: http://{server.addr()}/v1/traces
+
+    server.with_collector(|collector| {
+        // Assert on spans
+        collector
+            .has_span_with_name("GET /api/users")
+            .with_attributes([("http.method", "GET")])
+            .with_resource_attributes([("service.name", "api-gateway")])
+            .assert();
+
+        // Count assertions work too
+        collector
+            .has_span_with_name("database.query")
+            .assert_at_least(3);
+    }).await;
+}
+```
+
+### Testing Logs and Traces Together
+
+One collector handles both signals simultaneously:
+
+```rust
+#[tokio::test]
+async fn test_logs_and_traces() {
+    let server = MockServer::builder().start().await.unwrap();
+
+    // Your app exports both logs and traces...
+
+    server.with_collector(|collector| {
+        // Verify both signals were collected
+        assert_eq!(collector.log_count(), 10);
+        assert_eq!(collector.span_count(), 15);
+
+        // Assert on logs
+        collector
+            .has_log_with_body("Request received")
+            .assert();
+
+        // Assert on traces
+        collector
+            .has_span_with_name("handle_request")
+            .assert();
+    }).await;
+}
+```
+
 ## Assertion API
 
-### Basic Assertions
+### Log Assertions
 
 ```rust
 // Assert at least one log matches
@@ -116,9 +179,33 @@ collector.has_log_with_body("cache hit").assert_at_least(10);
 collector.has_log_with_body("WARNING").assert_at_most(5);
 ```
 
-### Matching Criteria
+### Trace Assertions
+
+Span assertions use the same fluent API:
 
 ```rust
+// Assert at least one span matches
+collector.has_span_with_name("ProcessOrder").assert();
+
+// Assert no spans match (negative assertion)
+collector.has_span_with_name("deprecated.operation").assert_not_exists();
+
+// Assert exact count
+collector.has_span_with_name("database.query").assert_count(5);
+
+// Assert minimum
+collector.has_span_with_name("cache.lookup").assert_at_least(10);
+
+// Assert maximum
+collector.has_span_with_name("external.api.call").assert_at_most(3);
+```
+
+### Matching Criteria
+
+Both logs and spans support matching on attributes, resource attributes, and scope attributes:
+
+```rust
+// Logs
 collector
     .has_log_with_body("User login")
     .with_attributes([
@@ -133,20 +220,40 @@ collector
         ("scope.name", "user-authentication"),
     ])
     .assert();
+
+// Spans (same API!)
+collector
+    .has_span_with_name("AuthenticateUser")
+    .with_attributes([
+        ("user.id", "12345"),
+        ("auth.provider", "google"),
+    ])
+    .with_resource_attributes([
+        ("service.name", "auth-service"),
+    ])
+    .with_scope_attributes([
+        ("library.name", "auth-lib"),
+    ])
+    .assert();
 ```
 
 ### Inspection Methods
 
 ```rust
-// Get total log count
-let count = collector.log_count();
+// Get counts
+let log_count = collector.log_count();
+let span_count = collector.span_count();
 
-// Get matching logs
-let assertion = collector.has_log_with_body("error");
-let matching_logs = assertion.get_all();
-let match_count = assertion.count();
+// Get matching items
+let log_assertion = collector.has_log_with_body("error");
+let matching_logs = log_assertion.get_all();
+let log_match_count = log_assertion.count();
 
-// Clear logs between test phases
+let span_assertion = collector.has_span_with_name("database.query");
+let matching_spans = span_assertion.get_all();
+let span_match_count = span_assertion.count();
+
+// Clear all collected data (logs AND spans)
 collector.clear();
 
 // Debug dump all logs
@@ -185,13 +292,15 @@ let log_count = collector.read().await.log_count();
 
 This library was inspired by `fake-opentelemetry-collector` but adds:
 
+- **Trace Support**: Test both logs and traces in the same collector
 - **HTTP Protocol Support**: Both JSON and Protobuf over HTTP, not just gRPC
 - **Fluent Assertion API**: Builder pattern for more readable tests
 - **Count Assertions**: `assert_count()`, `assert_at_least()`, `assert_at_most()`
-- **Negative Assertions**: `assert_not_exists()` for verifying logs don't exist
+- **Negative Assertions**: `assert_not_exists()` for verifying data doesn't exist
 - **Scope Attributes**: Support for asserting on scope-level attributes
 - **Better Error Messages**: Detailed panic messages showing what was expected vs what was found
 - **Arc-Optimised Storage**: Efficient memory usage for resource/scope attributes
+- **Builder Pattern**: Simple defaults with `MockServer::builder().start()` or full control
 
 ## License
 
