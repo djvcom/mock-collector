@@ -2,6 +2,7 @@ use std::net::SocketAddr;
 use thiserror::Error;
 
 #[derive(Debug, Error)]
+#[non_exhaustive]
 pub enum MockServerError {
     #[error("Failed to bind to address {addr}: {source}")]
     BindError {

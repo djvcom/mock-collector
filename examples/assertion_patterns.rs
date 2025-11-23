@@ -141,7 +141,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     }),
                                 }],
                                 dropped_attributes_count: 0,
-                                ..Default::default()
                             }],
                             ..Default::default()
                         },

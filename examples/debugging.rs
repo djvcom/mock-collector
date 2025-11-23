@@ -144,10 +144,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 logs_with_payment_id.len()
             );
             for log in &logs_with_payment_id {
-                if let Some(body) = &log.log_record.body {
-                    if let Some(any_value::Value::StringValue(s)) = &body.value {
-                        println!("  - {}", s);
-                    }
+                if let Some(body) = &log.log_record().body
+                    && let Some(any_value::Value::StringValue(s)) = &body.value
+                {
+                    println!("  - {}", s);
                 }
             }
             println!();
@@ -173,10 +173,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     .assert();
             }));
 
-            if let Err(e) = result {
-                if let Some(msg) = e.downcast_ref::<String>() {
-                    println!("Caught expected panic:\n{}\n", msg);
-                }
+            if let Err(e) = result
+                && let Some(msg) = e.downcast_ref::<String>()
+            {
+                println!("Caught expected panic:\n{}\n", msg);
             }
         })
         .await;

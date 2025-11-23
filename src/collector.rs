@@ -11,9 +11,9 @@ use std::sync::Arc;
 /// are available on each test log record to make it easy to assert against.
 #[derive(Debug, Clone)]
 pub struct TestLogRecord {
-    pub resource_attrs: Arc<Vec<KeyValue>>,
-    pub scope_attrs: Arc<Vec<KeyValue>>,
-    pub log_record: LogRecord,
+    resource_attrs: Arc<Vec<KeyValue>>,
+    scope_attrs: Arc<Vec<KeyValue>>,
+    log_record: LogRecord,
 }
 
 impl TestLogRecord {
@@ -39,9 +39,9 @@ impl TestLogRecord {
 /// are available on each test span to make it easy to assert against.
 #[derive(Debug, Clone)]
 pub struct TestSpan {
-    pub resource_attrs: Arc<Vec<KeyValue>>,
-    pub scope_attrs: Arc<Vec<KeyValue>>,
-    pub span: Span,
+    resource_attrs: Arc<Vec<KeyValue>>,
+    scope_attrs: Arc<Vec<KeyValue>>,
+    span: Span,
 }
 
 impl TestSpan {
@@ -599,6 +599,9 @@ impl<'a> LogAssertion<'a> {
     }
 }
 
+/// Type alias for event specifications with attributes: (event_name, attributes).
+type EventWithAttributes = Vec<(String, Vec<(String, Value)>)>;
+
 /// A builder for constructing span assertions.
 #[derive(Debug)]
 pub struct SpanAssertion<'a> {
@@ -608,7 +611,7 @@ pub struct SpanAssertion<'a> {
     resource_attributes: Option<Vec<(String, Value)>>,
     scope_attributes: Option<Vec<(String, Value)>>,
     event_names: Option<Vec<String>>,
-    event_with_attributes: Option<Vec<(String, Vec<(String, Value)>)>>,
+    event_with_attributes: Option<EventWithAttributes>,
 }
 
 impl<'a> SpanAssertion<'a> {
@@ -682,7 +685,7 @@ impl<'a> SpanAssertion<'a> {
 
     /// Returns the count of spans matching the criteria.
     pub fn count(&self) -> usize {
-        self.get_all().len()
+        self.spans.iter().filter(|s| self.matches(s)).count()
     }
 
     /// Adds span attribute assertions to the criteria.
