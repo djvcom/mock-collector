@@ -4,13 +4,13 @@ use opentelemetry_proto::tonic::collector::logs::v1::{
     ExportLogsServiceRequest, ExportLogsServiceResponse,
     logs_service_server::{LogsService, LogsServiceServer},
 };
-use opentelemetry_proto::tonic::collector::trace::v1::{
-    ExportTraceServiceRequest, ExportTraceServiceResponse,
-    trace_service_server::{TraceService, TraceServiceServer},
-};
 use opentelemetry_proto::tonic::collector::metrics::v1::{
     ExportMetricsServiceRequest, ExportMetricsServiceResponse,
     metrics_service_server::{MetricsService, MetricsServiceServer},
+};
+use opentelemetry_proto::tonic::collector::trace::v1::{
+    ExportTraceServiceRequest, ExportTraceServiceResponse,
+    trace_service_server::{TraceService, TraceServiceServer},
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
@@ -514,10 +514,7 @@ impl HttpProtocol {
         }
     }
 
-    fn decode_metrics(
-        &self,
-        body: &[u8],
-    ) -> Result<ExportMetricsServiceRequest, MockServerError> {
+    fn decode_metrics(&self, body: &[u8]) -> Result<ExportMetricsServiceRequest, MockServerError> {
         match self {
             HttpProtocol::Json => {
                 serde_json::from_slice(body).map_err(MockServerError::JsonParseError)

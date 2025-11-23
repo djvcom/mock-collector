@@ -1,11 +1,8 @@
 use opentelemetry_proto::tonic::{
     collector::logs::v1::ExportLogsServiceRequest,
     collector::metrics::v1::ExportMetricsServiceRequest,
-    collector::trace::v1::ExportTraceServiceRequest,
-    common::v1::KeyValue,
-    logs::v1::LogRecord,
-    metrics::v1::Metric,
-    trace::v1::Span,
+    collector::trace::v1::ExportTraceServiceRequest, common::v1::KeyValue, logs::v1::LogRecord,
+    metrics::v1::Metric, trace::v1::Span,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -1247,24 +1244,25 @@ impl<'a> MetricAssertion<'a> {
         if let Some(ref expected_attrs) = self.attributes {
             // Metrics have data points with attributes
             // We check if any data point has the expected attributes
-            let has_matching_data_point = Self::check_metric_data_points(&metric.metric, expected_attrs);
+            let has_matching_data_point =
+                Self::check_metric_data_points(&metric.metric, expected_attrs);
             if !has_matching_data_point {
                 return false;
             }
         }
 
         // Check resource attributes
-        if let Some(ref expected_attrs) = self.resource_attributes {
-            if !Self::check_attributes(&metric.resource_attrs, expected_attrs) {
-                return false;
-            }
+        if let Some(ref expected_attrs) = self.resource_attributes
+            && !Self::check_attributes(&metric.resource_attrs, expected_attrs)
+        {
+            return false;
         }
 
         // Check scope attributes
-        if let Some(ref expected_attrs) = self.scope_attributes {
-            if !Self::check_attributes(&metric.scope_attrs, expected_attrs) {
-                return false;
-            }
+        if let Some(ref expected_attrs) = self.scope_attributes
+            && !Self::check_attributes(&metric.scope_attrs, expected_attrs)
+        {
+            return false;
         }
 
         true
@@ -1276,21 +1274,26 @@ impl<'a> MetricAssertion<'a> {
         // Check data points based on metric type
         if let Some(ref data) = metric.data {
             match data {
-                Data::Gauge(gauge) => {
-                    gauge.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
-                }
-                Data::Sum(sum) => {
-                    sum.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
-                }
-                Data::Histogram(histogram) => {
-                    histogram.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
-                }
-                Data::ExponentialHistogram(hist) => {
-                    hist.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
-                }
-                Data::Summary(summary) => {
-                    summary.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
-                }
+                Data::Gauge(gauge) => gauge
+                    .data_points
+                    .iter()
+                    .any(|dp| Self::check_attributes(&dp.attributes, expected)),
+                Data::Sum(sum) => sum
+                    .data_points
+                    .iter()
+                    .any(|dp| Self::check_attributes(&dp.attributes, expected)),
+                Data::Histogram(histogram) => histogram
+                    .data_points
+                    .iter()
+                    .any(|dp| Self::check_attributes(&dp.attributes, expected)),
+                Data::ExponentialHistogram(hist) => hist
+                    .data_points
+                    .iter()
+                    .any(|dp| Self::check_attributes(&dp.attributes, expected)),
+                Data::Summary(summary) => summary
+                    .data_points
+                    .iter()
+                    .any(|dp| Self::check_attributes(&dp.attributes, expected)),
             }
         } else {
             false
@@ -1299,7 +1302,9 @@ impl<'a> MetricAssertion<'a> {
 
     fn check_attributes(attrs: &[KeyValue], expected: &[(String, Value)]) -> bool {
         expected.iter().all(|(key, value)| {
-            attrs.iter().any(|kv| &kv.key == key && Self::any_value_matches(&kv.value, value))
+            attrs
+                .iter()
+                .any(|kv| &kv.key == key && Self::any_value_matches(&kv.value, value))
         })
     }
 
@@ -1311,22 +1316,19 @@ impl<'a> MetricAssertion<'a> {
 
         match attr_value {
             Some(av) => match &av.value {
-                Some(AnyValue::StringValue(s)) => expected
-                    .as_str()
-                    .map(|exp| s == exp)
-                    .unwrap_or(false),
-                Some(AnyValue::IntValue(i)) => expected
-                    .as_i64()
-                    .map(|exp| *i == exp)
-                    .unwrap_or(false),
+                Some(AnyValue::StringValue(s)) => {
+                    expected.as_str().map(|exp| s == exp).unwrap_or(false)
+                }
+                Some(AnyValue::IntValue(i)) => {
+                    expected.as_i64().map(|exp| *i == exp).unwrap_or(false)
+                }
                 Some(AnyValue::DoubleValue(d)) => expected
                     .as_f64()
                     .map(|n| (*d - n).abs() < f64::EPSILON)
                     .unwrap_or(false),
-                Some(AnyValue::BoolValue(b)) => expected
-                    .as_bool()
-                    .map(|exp| *b == exp)
-                    .unwrap_or(false),
+                Some(AnyValue::BoolValue(b)) => {
+                    expected.as_bool().map(|exp| *b == exp).unwrap_or(false)
+                }
                 _ => false,
             },
             None => false,

@@ -480,9 +480,7 @@ async fn test_http_json_metrics_with_official_example() {
                 .assert();
 
             // Test count assertions
-            collector
-                .has_metric_with_name("my.counter")
-                .assert_count(1);
+            collector.has_metric_with_name("my.counter").assert_count(1);
 
             // Test has_metrics() without name filter
             collector

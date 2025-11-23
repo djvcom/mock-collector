@@ -2,10 +2,12 @@
 name = "mock-collector"
 version = "0.1.0"
 edition = "2024"
+authors = ["Daniel Verrall"]
+rust-version = "1.91.1"
 description = "Mock OpenTelemetry OTLP collector server for testing"
 license = "MIT"
-repository = "https://github.com/youruser/mock-collector"
-homepage = "https://github.com/youruser/mock-collector"
+repository = "https://github.com/djvcom/mock-collector"
+homepage = "https://github.com/djvcom/mock-collector"
 documentation = "https://docs.rs/mock-collector"
 keywords = ["opentelemetry", "testing", "mock", "otlp", "observability"]
 categories = ["development-tools::testing"]
