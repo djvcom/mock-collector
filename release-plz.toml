@@ -14,7 +14,7 @@ name = "mock-collector"
 changelog_include = ["feat", "fix", "perf", "refactor", "docs"]
 
 # Automatically update version in README
-[[package.version_replacements]]
+[[package.version_replacement]]
 file = "README.md"
 search = 'mock-collector = "[^"]*"'
 replace = 'mock-collector = "{{version}}"'
