@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2](https://github.com/djvcom/mock-collector/compare/v0.1.1...v0.1.2) - 2025-11-23
+
+### Added
+
+- add crates.io and docs badges to README
+- auto-update README version and remove deployment approval
+
+### Fixed
+
+- correct release-plz config syntax for version replacement
+
 ## [0.1.1](https://github.com/djvcom/mock-collector/compare/v0.1.0...v0.1.1) - 2025-11-23
 
 ### Other
