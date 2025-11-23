@@ -12,3 +12,9 @@ git_release_enable = true
 name = "mock-collector"
 # Use conventional commits to determine version bumps
 changelog_include = ["feat", "fix", "perf", "refactor", "docs"]
+
+# Automatically update version in README
+[[package.version_replacements]]
+file = "README.md"
+search = 'mock-collector = "[^"]*"'
+replace = 'mock-collector = "{{version}}"'
