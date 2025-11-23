@@ -1,5 +1,10 @@
 # Mock Collector
 
+[![Crates.io](https://img.shields.io/crates/v/mock-collector.svg)](https://crates.io/crates/mock-collector)
+[![Documentation](https://docs.rs/mock-collector/badge.svg)](https://docs.rs/mock-collector)
+[![CI](https://github.com/djvcom/mock-collector/workflows/CI/badge.svg)](https://github.com/djvcom/mock-collector/actions)
+[![License](https://img.shields.io/crates/l/mock-collector.svg)](LICENSE)
+
 A mock OpenTelemetry OTLP collector server for testing applications that export telemetry data.
 
 ## Features
@@ -16,7 +21,7 @@ A mock OpenTelemetry OTLP collector server for testing applications that export 
 
 ## Installation
 
-Add to your `Cargo.toml`:
+Add to your `Cargo.toml` (check the badge above for the latest version):
 
 ```toml
 [dev-dependencies]
