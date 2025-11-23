@@ -168,34 +168,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     // Verify each protocol's logs
     let collector_guard = collector.read().await;
 
-    collector_guard.has_log_with_body("Log from gRPC").assert();
+    collector_guard
+        .expect_log_with_body("Log from gRPC")
+        .assert_exists();
     println!("✓ Found log from gRPC");
 
     collector_guard
-        .has_log_with_body("Log from HTTP/JSON")
-        .assert();
+        .expect_log_with_body("Log from HTTP/JSON")
+        .assert_exists();
     println!("✓ Found log from HTTP/JSON");
 
     collector_guard
-        .has_log_with_body("Log from HTTP/Protobuf")
-        .assert();
+        .expect_log_with_body("Log from HTTP/Protobuf")
+        .assert_exists();
     println!("✓ Found log from HTTP/Protobuf");
 
     // Verify by protocol attribute
     collector_guard
-        .has_logs()
+        .expect_log()
         .with_resource_attributes([("protocol", "grpc")])
         .assert_count(1);
     println!("✓ Found 1 log with protocol=grpc");
 
     collector_guard
-        .has_logs()
+        .expect_log()
         .with_resource_attributes([("protocol", "http-json")])
         .assert_count(1);
     println!("✓ Found 1 log with protocol=http-json");
 
     collector_guard
-        .has_logs()
+        .expect_log()
         .with_resource_attributes([("protocol", "http-proto")])
         .assert_count(1);
     println!("✓ Found 1 log with protocol=http-proto");

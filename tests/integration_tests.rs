@@ -32,25 +32,27 @@ async fn test_http_json_logs_with_official_example() {
             assert_eq!(collector.log_count(), 1);
 
             // Verify the log body
-            collector.has_log_with_body("Example log record").assert();
+            collector
+                .expect_log_with_body("Example log record")
+                .assert_exists();
 
             // Verify resource attributes
             collector
-                .has_log_with_body("Example log record")
+                .expect_log_with_body("Example log record")
                 .with_resource_attributes([("service.name", "my.service")])
-                .assert();
+                .assert_exists();
 
             // Verify scope attributes
             collector
-                .has_log_with_body("Example log record")
+                .expect_log_with_body("Example log record")
                 .with_scope_attributes([("my.scope.attribute", "some scope attribute")])
-                .assert();
+                .assert_exists();
 
             // Verify log-level string attributes
             collector
-                .has_log_with_body("Example log record")
+                .expect_log_with_body("Example log record")
                 .with_attributes([("string.attribute", "some string")])
-                .assert();
+                .assert_exists();
         })
         .await;
 
@@ -88,25 +90,27 @@ async fn test_http_json_traces_with_official_example() {
             assert_eq!(collector.span_count(), 1);
 
             // Verify the span name
-            collector.has_span_with_name("I'm a server span").assert();
+            collector
+                .expect_span_with_name("I'm a server span")
+                .assert_exists();
 
             // Verify resource attributes
             collector
-                .has_span_with_name("I'm a server span")
+                .expect_span_with_name("I'm a server span")
                 .with_resource_attributes([("service.name", "my.service")])
-                .assert();
+                .assert_exists();
 
             // Verify scope attributes
             collector
-                .has_span_with_name("I'm a server span")
+                .expect_span_with_name("I'm a server span")
                 .with_scope_attributes([("my.scope.attribute", "some scope attribute")])
-                .assert();
+                .assert_exists();
 
             // Verify span attributes
             collector
-                .has_span_with_name("I'm a server span")
+                .expect_span_with_name("I'm a server span")
                 .with_attributes([("my.span.attr", "some value")])
-                .assert();
+                .assert_exists();
         })
         .await;
 
@@ -151,11 +155,11 @@ async fn test_http_protobuf_logs_with_official_example() {
             assert_eq!(collector.log_count(), 1);
 
             collector
-                .has_log_with_body("Example log record")
+                .expect_log_with_body("Example log record")
                 .with_resource_attributes([("service.name", "my.service")])
                 .with_scope_attributes([("my.scope.attribute", "some scope attribute")])
                 .with_attributes([("string.attribute", "some string")])
-                .assert();
+                .assert_exists();
         })
         .await;
 
@@ -200,11 +204,11 @@ async fn test_http_protobuf_traces_with_official_example() {
             assert_eq!(collector.span_count(), 1);
 
             collector
-                .has_span_with_name("I'm a server span")
+                .expect_span_with_name("I'm a server span")
                 .with_resource_attributes([("service.name", "my.service")])
                 .with_scope_attributes([("my.scope.attribute", "some scope attribute")])
                 .with_attributes([("my.span.attr", "some value")])
-                .assert();
+                .assert_exists();
         })
         .await;
 
@@ -266,15 +270,15 @@ async fn test_grpc_logs_and_traces_simultaneously() {
 
             // Verify log
             collector
-                .has_log_with_body("Example log record")
+                .expect_log_with_body("Example log record")
                 .with_resource_attributes([("service.name", "my.service")])
-                .assert();
+                .assert_exists();
 
             // Verify span
             collector
-                .has_span_with_name("I'm a server span")
+                .expect_span_with_name("I'm a server span")
                 .with_resource_attributes([("service.name", "my.service")])
-                .assert();
+                .assert_exists();
         })
         .await;
 
@@ -374,33 +378,33 @@ async fn test_span_event_assertions() {
 
             // Assert span has specific event
             collector
-                .has_span_with_name("OrderProcessing")
+                .expect_span_with_name("OrderProcessing")
                 .with_event("payment.initiated")
-                .assert();
+                .assert_exists();
 
             // Assert span has multiple events
             collector
-                .has_span_with_name("OrderProcessing")
+                .expect_span_with_name("OrderProcessing")
                 .with_event("payment.initiated")
                 .with_event("payment.completed")
                 .with_event("notification.sent")
-                .assert();
+                .assert_exists();
 
             // Assert event with attributes
             collector
-                .has_span_with_name("OrderProcessing")
+                .expect_span_with_name("OrderProcessing")
                 .with_event_attributes("payment.initiated", [("amount", "100.00")])
-                .assert();
+                .assert_exists();
 
             // Assert event with different attributes
             collector
-                .has_span_with_name("OrderProcessing")
+                .expect_span_with_name("OrderProcessing")
                 .with_event_attributes("payment.completed", [("transaction.id", "txn-12345")])
-                .assert();
+                .assert_exists();
 
             // Assert negative case - event doesn't exist
             collector
-                .has_span_with_name("OrderProcessing")
+                .expect_span_with_name("OrderProcessing")
                 .with_event("payment.failed")
                 .assert_not_exists();
         })
@@ -440,51 +444,55 @@ async fn test_http_json_metrics_with_official_example() {
             assert_eq!(collector.metric_count(), 4);
 
             // Verify the counter metric
-            collector.has_metric_with_name("my.counter").assert();
+            collector
+                .expect_metric_with_name("my.counter")
+                .assert_exists();
 
             // Verify resource attributes
             collector
-                .has_metric_with_name("my.counter")
+                .expect_metric_with_name("my.counter")
                 .with_resource_attributes([("service.name", "my.service")])
-                .assert();
+                .assert_exists();
 
             // Verify scope attributes
             collector
-                .has_metric_with_name("my.counter")
+                .expect_metric_with_name("my.counter")
                 .with_scope_attributes([("my.scope.attribute", "some scope attribute")])
-                .assert();
+                .assert_exists();
 
             // Verify metric data point attributes
             collector
-                .has_metric_with_name("my.counter")
+                .expect_metric_with_name("my.counter")
                 .with_attributes([("my.counter.attr", "some value")])
-                .assert();
+                .assert_exists();
 
             // Verify gauge metric
             collector
-                .has_metric_with_name("my.gauge")
+                .expect_metric_with_name("my.gauge")
                 .with_attributes([("my.gauge.attr", "some value")])
-                .assert();
+                .assert_exists();
 
             // Verify histogram metric
             collector
-                .has_metric_with_name("my.histogram")
+                .expect_metric_with_name("my.histogram")
                 .with_attributes([("my.histogram.attr", "some value")])
-                .assert();
+                .assert_exists();
 
             // Verify exponential histogram metric exists (note: HTTP JSON/Protobuf has
             // a known limitation in opentelemetry-proto 0.31.0 where exponentialHistogram
             // data is not properly deserialized, so we only check name here)
             collector
-                .has_metric_with_name("my.exponential.histogram")
-                .assert();
+                .expect_metric_with_name("my.exponential.histogram")
+                .assert_exists();
 
             // Test count assertions
-            collector.has_metric_with_name("my.counter").assert_count(1);
+            collector
+                .expect_metric_with_name("my.counter")
+                .assert_count(1);
 
             // Test has_metrics() without name filter
             collector
-                .has_metrics()
+                .expect_metric()
                 .with_resource_attributes([("service.name", "my.service")])
                 .assert_count(4);
         })
@@ -531,26 +539,26 @@ async fn test_http_protobuf_metrics_with_official_example() {
             assert_eq!(collector.metric_count(), 4);
 
             collector
-                .has_metric_with_name("my.counter")
+                .expect_metric_with_name("my.counter")
                 .with_resource_attributes([("service.name", "my.service")])
                 .with_scope_attributes([("my.scope.attribute", "some scope attribute")])
                 .with_attributes([("my.counter.attr", "some value")])
-                .assert();
+                .assert_exists();
 
             collector
-                .has_metric_with_name("my.gauge")
+                .expect_metric_with_name("my.gauge")
                 .with_attributes([("my.gauge.attr", "some value")])
-                .assert();
+                .assert_exists();
 
             collector
-                .has_metric_with_name("my.histogram")
+                .expect_metric_with_name("my.histogram")
                 .with_attributes([("my.histogram.attr", "some value")])
-                .assert();
+                .assert_exists();
 
             // Exponential histogram (same limitation as JSON test)
             collector
-                .has_metric_with_name("my.exponential.histogram")
-                .assert();
+                .expect_metric_with_name("my.exponential.histogram")
+                .assert_exists();
         })
         .await;
 
@@ -629,26 +637,157 @@ async fn test_grpc_all_signals_simultaneously() {
 
             // Verify log
             collector
-                .has_log_with_body("Example log record")
+                .expect_log_with_body("Example log record")
                 .with_resource_attributes([("service.name", "my.service")])
-                .assert();
+                .assert_exists();
 
             // Verify span
             collector
-                .has_span_with_name("I'm a server span")
+                .expect_span_with_name("I'm a server span")
                 .with_resource_attributes([("service.name", "my.service")])
-                .assert();
+                .assert_exists();
 
             // Verify metrics
             collector
-                .has_metric_with_name("my.counter")
+                .expect_metric_with_name("my.counter")
                 .with_resource_attributes([("service.name", "my.service")])
-                .assert();
+                .assert_exists();
 
             collector
-                .has_metric_with_name("my.gauge")
+                .expect_metric_with_name("my.gauge")
                 .with_resource_attributes([("service.name", "my.service")])
-                .assert();
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+#[tokio::test]
+async fn test_severity_assertions() {
+    use mock_collector::SeverityNumber;
+    use opentelemetry_proto::tonic::collector::logs::v1::{
+        ExportLogsServiceRequest, logs_service_client::LogsServiceClient,
+    };
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value};
+    use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use opentelemetry_proto::tonic::resource::v1::Resource;
+
+    // Start gRPC server
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Create a gRPC client
+    let mut client = LogsServiceClient::connect(format!("http://{}", server.addr()))
+        .await
+        .expect("Failed to connect");
+
+    // Send logs with different severity levels
+    let request = ExportLogsServiceRequest {
+        resource_logs: vec![ResourceLogs {
+            resource: Some(Resource {
+                attributes: vec![KeyValue {
+                    key: "service.name".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue("test-service".to_string())),
+                    }),
+                }],
+                dropped_attributes_count: 0,
+                ..Default::default()
+            }),
+            scope_logs: vec![ScopeLogs {
+                scope: None,
+                log_records: vec![
+                    LogRecord {
+                        body: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("Debug message".to_string())),
+                        }),
+                        severity_number: SeverityNumber::Debug as i32,
+                        severity_text: "DEBUG".to_string(),
+                        ..Default::default()
+                    },
+                    LogRecord {
+                        body: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("Info message".to_string())),
+                        }),
+                        severity_number: SeverityNumber::Info as i32,
+                        severity_text: "INFO".to_string(),
+                        ..Default::default()
+                    },
+                    LogRecord {
+                        body: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("Error message".to_string())),
+                        }),
+                        severity_number: SeverityNumber::Error as i32,
+                        severity_text: "ERROR".to_string(),
+                        ..Default::default()
+                    },
+                    LogRecord {
+                        body: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("Another error".to_string())),
+                        }),
+                        severity_number: SeverityNumber::Error as i32,
+                        severity_text: "ERROR".to_string(),
+                        ..Default::default()
+                    },
+                ],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    };
+
+    client.export(request).await.expect("Failed to export logs");
+
+    // Assert on collected data
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.log_count(), 4);
+
+            // Assert at least one DEBUG log exists
+            collector
+                .expect_log()
+                .with_severity(SeverityNumber::Debug)
+                .assert_exists();
+
+            // Assert at least one INFO log exists
+            collector
+                .expect_log()
+                .with_severity(SeverityNumber::Info)
+                .assert_exists();
+
+            // Assert exactly 2 ERROR logs
+            collector
+                .expect_log()
+                .with_severity(SeverityNumber::Error)
+                .assert_count(2);
+
+            // Assert using severity text
+            collector
+                .expect_log()
+                .with_severity_text("ERROR")
+                .assert_count(2);
+
+            // Combine severity with body matching
+            collector
+                .expect_log_with_body("Error message")
+                .with_severity(SeverityNumber::Error)
+                .assert_exists();
+
+            // Combine severity with resource attributes
+            collector
+                .expect_log()
+                .with_severity(SeverityNumber::Debug)
+                .with_resource_attributes([("service.name", "test-service")])
+                .assert_exists();
+
+            // Assert no FATAL logs exist
+            collector
+                .expect_log()
+                .with_severity(SeverityNumber::Fatal)
+                .assert_not_exists();
         })
         .await;
 

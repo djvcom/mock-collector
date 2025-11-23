@@ -128,14 +128,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("--- 3. Count Matching Items ---");
             let payment_logs = collector
-                .has_logs()
+                .expect_log()
                 .with_resource_attributes([("service.name", "payment-service")])
                 .count();
             println!("Logs from payment-service: {}\n", payment_logs);
 
             println!("--- 4. Get All Matching Items ---");
             let assertion = collector
-                .has_logs()
+                .expect_log()
                 .with_attributes([("payment.id", "pay-12345")]);
             let logs_with_payment_id = assertion.get_all();
 
@@ -156,7 +156,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // This will pass
             match std::panic::catch_unwind(|| {
-                collector.has_log_with_body("Payment initiated").assert();
+                collector
+                    .expect_log_with_body("Payment initiated")
+                    .assert_exists();
             }) {
                 Ok(_) => println!("✓ 'Payment initiated' log found"),
                 Err(_) => println!("✗ 'Payment initiated' log NOT found"),
@@ -168,9 +170,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 collector
-                    .has_log_with_body("Payment failed")
+                    .expect_log_with_body("Payment failed")
                     .with_attributes([("error.code", "INSUFFICIENT_FUNDS")])
-                    .assert();
+                    .assert_exists();
             }));
 
             if let Err(e) = result

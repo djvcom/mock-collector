@@ -169,31 +169,33 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("--- Basic Existence Assertions ---");
 
             // Assert at least one log matches
-            collector.has_log_with_body("Request received").assert();
+            collector
+                .expect_log_with_body("Request received")
+                .assert_exists();
             println!("✓ assert() - At least one log with body 'Request received'");
 
             // Assert no logs match
             collector
-                .has_log_with_body("Error occurred")
+                .expect_log_with_body("Error occurred")
                 .assert_not_exists();
             println!("✓ assert_not_exists() - No logs with body 'Error occurred'");
 
             println!("\n--- Count-Based Assertions ---");
 
             // Assert exact count
-            collector.has_logs().assert_count(3);
+            collector.expect_log().assert_count(3);
             println!("✓ assert_count(3) - Exactly 3 logs");
 
             // Assert minimum count
             collector
-                .has_logs()
+                .expect_log()
                 .with_resource_attributes([("service.name", "web-api")])
                 .assert_at_least(3);
             println!("✓ assert_at_least(3) - At least 3 logs from web-api");
 
             // Assert maximum count
             collector
-                .has_log_with_body("Request received")
+                .expect_log_with_body("Request received")
                 .assert_at_most(1);
             println!("✓ assert_at_most(1) - At most 1 'Request received' log");
 
@@ -201,14 +203,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Log attributes
             collector
-                .has_log_with_body("Request received")
+                .expect_log_with_body("Request received")
                 .with_attributes([("http.method", "GET")])
-                .assert();
+                .assert_exists();
             println!("✓ with_attributes() - Log has http.method=GET");
 
             // Resource attributes
             collector
-                .has_logs()
+                .expect_log()
                 .with_resource_attributes([
                     ("service.name", "web-api"),
                     ("environment", "production"),
@@ -219,34 +221,36 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             println!("\n--- Span Assertions ---");
 
             // Span existence
-            collector.has_span_with_name("GET /api/users").assert();
+            collector
+                .expect_span_with_name("GET /api/users")
+                .assert_exists();
             println!("✓ has_span_with_name() - Found span");
 
             // Span with attributes
             collector
-                .has_span_with_name("GET /api/users")
+                .expect_span_with_name("GET /api/users")
                 .with_attributes([("http.status_code", "200")])
-                .assert();
+                .assert_exists();
             println!("✓ Span has attribute http.status_code=200");
 
             // Span count
-            collector.has_spans().assert_count(2);
+            collector.expect_span().assert_count(2);
             println!("✓ Exactly 2 spans");
 
             println!("\n--- Event Assertions ---");
 
             // Span with event
             collector
-                .has_span_with_name("GET /api/users")
+                .expect_span_with_name("GET /api/users")
                 .with_event("cache.hit")
-                .assert();
+                .assert_exists();
             println!("✓ with_event() - Span has 'cache.hit' event");
 
             // Event with attributes
             collector
-                .has_span_with_name("GET /api/users")
+                .expect_span_with_name("GET /api/users")
                 .with_event_attributes("cache.hit", [("cache.key", "users:all")])
-                .assert();
+                .assert_exists();
             println!("✓ with_event_attributes() - Event has correct attributes");
 
             println!("\n--- Inspection Methods ---");
@@ -259,14 +263,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Get matching items
             let log_assertion = collector
-                .has_logs()
+                .expect_log()
                 .with_resource_attributes([("service.name", "web-api")]);
             let matching_logs = log_assertion.get_all();
             println!("✓ get_all() returned {} matching logs", matching_logs.len());
 
             // Count matches
             let match_count = collector
-                .has_spans()
+                .expect_span()
                 .with_resource_attributes([("service.name", "web-api")])
                 .count();
             println!("✓ count() returned {} matching spans", match_count);

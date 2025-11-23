@@ -9,6 +9,7 @@ A mock OpenTelemetry OTLP collector server for testing applications that export 
 - **Single Collector**: One collector handles all signals - test logs, traces, and metrics together
 - **Fluent Assertion API**: Easy-to-use builder pattern for test assertions
 - **Flexible Matching**: Match by body/name, attributes, resource attributes, and scope attributes
+- **Severity Level Assertions**: Assert on log severity levels (Debug, Info, Warn, Error, Fatal)
 - **Count-Based Assertions**: Assert exact counts, minimum, or maximum number of matches
 - **Async-Ready**: Built with Tokio for async/await compatibility
 - **Graceful Shutdown**: Proper resource cleanup with shutdown signals
@@ -43,9 +44,9 @@ async fn test_grpc_logging() {
     // Assert logs were received
     server.with_collector(|collector| {
         collector
-            .has_log_with_body("Application started")
+            .expect_log_with_body("Application started")
             .with_resource_attributes([("service.name", "my-service")])
-            .assert();
+            .assert_exists();
     }).await;
 
     // Graceful shutdown
@@ -69,9 +70,9 @@ async fn test_http_json_logging() {
 
     server.with_collector(|collector| {
         collector
-            .has_log_with_body("Request processed")
+            .expect_log_with_body("Request processed")
             .with_attributes([("http.status_code", "200")])
-            .assert();
+            .assert_exists();
     }).await;
 }
 ```
@@ -116,14 +117,14 @@ async fn test_traces() {
     server.with_collector(|collector| {
         // Assert on spans
         collector
-            .has_span_with_name("GET /api/users")
+            .expect_span_with_name("GET /api/users")
             .with_attributes([("http.method", "GET")])
             .with_resource_attributes([("service.name", "api-gateway")])
-            .assert();
+            .assert_exists();
 
         // Count assertions work too
         collector
-            .has_span_with_name("database.query")
+            .expect_span_with_name("database.query")
             .assert_at_least(3);
     }).await;
 }
@@ -147,14 +148,14 @@ async fn test_metrics() {
     server.with_collector(|collector| {
         // Assert on metrics
         collector
-            .has_metric_with_name("http_requests_total")
+            .expect_metric_with_name("http_requests_total")
             .with_attributes([("method", "GET")])
             .with_resource_attributes([("service.name", "api-gateway")])
-            .assert();
+            .assert_exists();
 
         // Count assertions work too
         collector
-            .has_metric_with_name("db_query_duration")
+            .expect_metric_with_name("db_query_duration")
             .assert_at_least(1);
     }).await;
 }
@@ -179,18 +180,18 @@ async fn test_all_signals() {
 
         // Assert on logs
         collector
-            .has_log_with_body("Request received")
-            .assert();
+            .expect_log_with_body("Request received")
+            .assert_exists();
 
         // Assert on traces
         collector
-            .has_span_with_name("handle_request")
-            .assert();
+            .expect_span_with_name("handle_request")
+            .assert_exists();
 
         // Assert on metrics
         collector
-            .has_metric_with_name("requests_total")
-            .assert();
+            .expect_metric_with_name("requests_total")
+            .assert_exists();
     }).await;
 }
 ```
@@ -201,19 +202,39 @@ async fn test_all_signals() {
 
 ```rust
 // Assert at least one log matches
-collector.has_log_with_body("error occurred").assert();
+collector.expect_log_with_body("error occurred").assert_exists();
 
 // Assert no logs match (negative assertion)
-collector.has_log_with_body("password=secret").assert_not_exists();
+collector.expect_log_with_body("password=secret").assert_not_exists();
 
 // Assert exact count
-collector.has_log_with_body("retry attempt").assert_count(3);
+collector.expect_log_with_body("retry attempt").assert_count(3);
 
 // Assert minimum
-collector.has_log_with_body("cache hit").assert_at_least(10);
+collector.expect_log_with_body("cache hit").assert_at_least(10);
 
 // Assert maximum
-collector.has_log_with_body("WARNING").assert_at_most(5);
+collector.expect_log_with_body("WARNING").assert_at_most(5);
+
+// Assert on severity levels
+use mock_collector::SeverityNumber;
+
+collector
+    .expect_log()
+    .with_severity(SeverityNumber::Error)
+    .assert_count(2);
+
+collector
+    .expect_log()
+    .with_severity(SeverityNumber::Debug)
+    .assert_exists();
+
+// Combine severity with other criteria
+collector
+    .expect_log_with_body("Connection failed")
+    .with_severity(SeverityNumber::Error)
+    .with_resource_attributes([("service.name", "api")])
+    .assert_exists();
 ```
 
 ### Trace Assertions
@@ -222,19 +243,19 @@ Span assertions use the same fluent API:
 
 ```rust
 // Assert at least one span matches
-collector.has_span_with_name("ProcessOrder").assert();
+collector.expect_span_with_name("ProcessOrder").assert_exists();
 
 // Assert no spans match (negative assertion)
-collector.has_span_with_name("deprecated.operation").assert_not_exists();
+collector.expect_span_with_name("deprecated.operation").assert_not_exists();
 
 // Assert exact count
-collector.has_span_with_name("database.query").assert_count(5);
+collector.expect_span_with_name("database.query").assert_count(5);
 
 // Assert minimum
-collector.has_span_with_name("cache.lookup").assert_at_least(10);
+collector.expect_span_with_name("cache.lookup").assert_at_least(10);
 
 // Assert maximum
-collector.has_span_with_name("external.api.call").assert_at_most(3);
+collector.expect_span_with_name("external.api.call").assert_at_most(3);
 ```
 
 ### Metric Assertions
@@ -243,19 +264,19 @@ Metric assertions use the same fluent API:
 
 ```rust
 // Assert at least one metric matches
-collector.has_metric_with_name("http_requests_total").assert();
+collector.expect_metric_with_name("http_requests_total").assert_exists();
 
 // Assert no metrics match (negative assertion)
-collector.has_metric_with_name("deprecated_metric").assert_not_exists();
+collector.expect_metric_with_name("deprecated_metric").assert_not_exists();
 
 // Assert exact count
-collector.has_metric_with_name("db_connections").assert_count(1);
+collector.expect_metric_with_name("db_connections").assert_count(1);
 
 // Assert minimum
-collector.has_metric_with_name("cache_hits").assert_at_least(5);
+collector.expect_metric_with_name("cache_hits").assert_at_least(5);
 
 // Assert maximum
-collector.has_metric_with_name("errors_total").assert_at_most(2);
+collector.expect_metric_with_name("errors_total").assert_at_most(2);
 ```
 
 ### Matching Criteria
@@ -265,7 +286,7 @@ All three signals (logs, spans, and metrics) support matching on attributes, res
 ```rust
 // Logs
 collector
-    .has_log_with_body("User login")
+    .expect_log_with_body("User login")
     .with_attributes([
         ("user.id", "12345"),
         ("auth.method", "oauth2"),
@@ -277,11 +298,11 @@ collector
     .with_scope_attributes([
         ("scope.name", "user-authentication"),
     ])
-    .assert();
+    .assert_exists();
 
 // Spans (same API!)
 collector
-    .has_span_with_name("AuthenticateUser")
+    .expect_span_with_name("AuthenticateUser")
     .with_attributes([
         ("user.id", "12345"),
         ("auth.provider", "google"),
@@ -292,11 +313,11 @@ collector
     .with_scope_attributes([
         ("library.name", "auth-lib"),
     ])
-    .assert();
+    .assert_exists();
 
 // Metrics (same API!)
 collector
-    .has_metric_with_name("http_requests_total")
+    .expect_metric_with_name("http_requests_total")
     .with_attributes([
         ("method", "POST"),
         ("status", "200"),
@@ -307,7 +328,7 @@ collector
     .with_scope_attributes([
         ("meter.name", "http-metrics"),
     ])
-    .assert();
+    .assert_exists();
 ```
 
 ### Inspection Methods
@@ -319,15 +340,15 @@ let span_count = collector.span_count();
 let metric_count = collector.metric_count();
 
 // Get matching items
-let log_assertion = collector.has_log_with_body("error");
+let log_assertion = collector.expect_log_with_body("error");
 let matching_logs = log_assertion.get_all();
 let log_match_count = log_assertion.count();
 
-let span_assertion = collector.has_span_with_name("database.query");
+let span_assertion = collector.expect_span_with_name("database.query");
 let matching_spans = span_assertion.get_all();
 let span_match_count = span_assertion.count();
 
-let metric_assertion = collector.has_metric_with_name("requests_total");
+let metric_assertion = collector.expect_metric_with_name("requests_total");
 let matching_metrics = metric_assertion.get_all();
 let metric_match_count = metric_assertion.count();
 
@@ -364,6 +385,58 @@ let http_server = MockServer::with_collector(
 
 // Access the collector directly
 let log_count = collector.read().await.log_count();
+```
+
+## Examples
+
+The `examples/` directory contains complete working examples demonstrating various features:
+
+- **[basic_grpc.rs](examples/basic_grpc.rs)** - Getting started with gRPC protocol
+  - Starting a gRPC server
+  - Sending log records
+  - Basic assertion patterns
+  - Graceful shutdown
+
+- **[http_protocols.rs](examples/http_protocols.rs)** - HTTP/JSON and HTTP/Protobuf protocols
+  - Using HTTP/JSON endpoint
+  - Using HTTP/Protobuf endpoint
+  - Testing logs and traces
+  - Protocol comparison
+
+- **[metrics.rs](examples/metrics.rs)** - Testing metrics collection
+  - Sending metrics via gRPC
+  - Asserting on metric names and attributes
+  - All metric types (Sum, Gauge, Histogram)
+  - Metric data point matching
+
+- **[severity_assertions.rs](examples/severity_assertions.rs)** - Testing log severity levels
+  - Asserting on log severity (Debug, Info, Warn, Error, Fatal)
+  - Using SeverityNumber enum
+  - Combining severity with other criteria
+  - Counting logs by severity level
+
+- **[shared_collector.rs](examples/shared_collector.rs)** - Sharing collectors between servers
+  - Using a shared collector Arc
+  - Running multiple servers (gRPC and HTTP)
+  - Direct collector access patterns
+
+- **[assertion_patterns.rs](examples/assertion_patterns.rs)** - Advanced assertion techniques
+  - Count assertions (`assert_count`, `assert_at_least`, `assert_at_most`)
+  - Negative assertions (`assert_not_exists`)
+  - Combining multiple criteria
+  - Testing all three signals (logs, traces, metrics)
+
+- **[debugging.rs](examples/debugging.rs)** - Debugging failed assertions
+  - Using `dump()` to inspect collected data
+  - Using `count()` and `get_all()` for inspection
+  - Understanding assertion failures
+  - Troubleshooting tips
+
+Run any example with:
+```bash
+cargo run --example basic_grpc
+cargo run --example metrics
+# etc.
 ```
 
 ## Comparison with fake-opentelemetry-collector

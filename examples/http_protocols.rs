@@ -70,7 +70,9 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     json_server
         .with_collector(|collector| {
             println!("Logs received: {}\n", collector.log_count());
-            collector.has_log_with_body("Sent via HTTP/JSON").assert();
+            collector
+                .expect_log_with_body("Sent via HTTP/JSON")
+                .assert_exists();
         })
         .await;
 
@@ -132,8 +134,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         .with_collector(|collector| {
             println!("Logs received: {}\n", collector.log_count());
             collector
-                .has_log_with_body("Sent via HTTP/Protobuf")
-                .assert();
+                .expect_log_with_body("Sent via HTTP/Protobuf")
+                .assert_exists();
         })
         .await;
 

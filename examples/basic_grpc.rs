@@ -102,23 +102,23 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Assert on specific log
             collector
-                .has_log_with_body("Application started")
+                .expect_log_with_body("Application started")
                 .with_resource_attributes([("service.name", "example-service")])
-                .assert();
+                .assert_exists();
 
             println!("✓ Found 'Application started' log with correct service name");
 
             // Assert on log with attributes
             collector
-                .has_log_with_body("Processing request")
+                .expect_log_with_body("Processing request")
                 .with_attributes([("request.id", "req-12345")])
-                .assert();
+                .assert_exists();
 
             println!("✓ Found 'Processing request' log with request ID");
 
             // Count logs from the service
             let service_logs = collector
-                .has_logs()
+                .expect_log()
                 .with_resource_attributes([("service.name", "example-service")])
                 .count();
 
@@ -126,7 +126,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             // Verify negative case - this log doesn't exist
             collector
-                .has_log_with_body("Error occurred")
+                .expect_log_with_body("Error occurred")
                 .assert_not_exists();
 
             println!("✓ Verified 'Error occurred' log doesn't exist");

@@ -310,7 +310,101 @@ impl MockServer {
 
 /// A handle to a running mock server.
 ///
-/// Use this to access the collector, get the bound address, or shut down the server.
+/// This struct provides access to the underlying [`MockCollector`] and control
+/// over the server's lifecycle. It is returned by [`MockServer::start`] and
+/// [`MockServerBuilder::start`].
+///
+/// # Key Methods
+///
+/// - [`with_collector()`](Self::with_collector) - Run assertions with read access to the collector
+/// - [`with_collector_mut()`](Self::with_collector_mut) - Modify the collector (e.g., call `clear()`)
+/// - [`addr()`](Self::addr) - Get the server's bound address
+/// - [`shutdown()`](Self::shutdown) - Gracefully shut down the server
+///
+/// # Lifecycle
+///
+/// The server runs in the background while this handle exists. When the handle
+/// is dropped, the server is automatically shut down. For explicit shutdown control,
+/// use the [`shutdown()`](Self::shutdown) method.
+///
+/// # Examples
+///
+/// ## Basic Usage
+///
+/// ```no_run
+/// use mock_collector::{MockServer, Protocol};
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let server = MockServer::builder().start().await?;
+///
+/// // Get the bound address (useful when using port 0)
+/// println!("Server listening on: {}", server.addr());
+///
+/// // Your application exports telemetry here...
+///
+/// // Run assertions with read access
+/// server.with_collector(|collector| {
+///     assert_eq!(collector.log_count(), 5);
+/// }).await;
+///
+/// // Graceful shutdown
+/// server.shutdown().await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## Clearing the Collector
+///
+/// ```no_run
+/// use mock_collector::{MockServer, Protocol};
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let server = MockServer::builder().start().await?;
+///
+/// // Export some logs...
+///
+/// // Assert on first batch
+/// server.with_collector(|collector| {
+///     assert_eq!(collector.log_count(), 3);
+/// }).await;
+///
+/// // Clear and test a second batch
+/// server.with_collector_mut(|collector| {
+///     collector.clear();
+/// }).await;
+///
+/// // Export more logs...
+///
+/// server.with_collector(|collector| {
+///     assert_eq!(collector.log_count(), 2); // Only new logs
+/// }).await;
+/// # server.shutdown().await?;
+/// # Ok(())
+/// # }
+/// ```
+///
+/// ## Direct Arc Access
+///
+/// For advanced use cases, you can get direct access to the collector's Arc:
+///
+/// ```no_run
+/// use std::sync::Arc;
+/// use tokio::sync::RwLock;
+/// use mock_collector::{MockCollector, MockServer};
+///
+/// # #[tokio::main]
+/// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+/// let server = MockServer::builder().start().await?;
+/// let collector_arc: Arc<RwLock<MockCollector>> = server.collector();
+///
+/// // Use the Arc directly (e.g., share between tasks)
+/// let count = collector_arc.read().await.log_count();
+/// # server.shutdown().await?;
+/// # Ok(())
+/// # }
+/// ```
 pub struct ServerHandle {
     collector: Arc<RwLock<MockCollector>>,
     addr: SocketAddr,

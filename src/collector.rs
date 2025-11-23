@@ -267,13 +267,15 @@ impl MockCollector {
     }
 
     /// Starts building an assertion for logs with the specified body.
-    pub fn has_log_with_body<S: Into<String>>(&self, body: S) -> LogAssertion<'_> {
+    pub fn expect_log_with_body<S: Into<String>>(&self, body: S) -> LogAssertion<'_> {
         LogAssertion {
             logs: &self.logs,
             body: Some(body.into()),
             attributes: None,
             resource_attributes: None,
             scope_attributes: None,
+            severity_number: None,
+            severity_text: None,
         }
     }
 
@@ -288,22 +290,24 @@ impl MockCollector {
     /// # use mock_collector::MockCollector;
     /// # let collector = MockCollector::new();
     /// collector
-    ///     .has_logs()
+    ///     .expect_log()
     ///     .with_resource_attributes([("service.name", "my-service")])
     ///     .assert_at_least(5);
     /// ```
-    pub fn has_logs(&self) -> LogAssertion<'_> {
+    pub fn expect_log(&self) -> LogAssertion<'_> {
         LogAssertion {
             logs: &self.logs,
             body: None,
             attributes: None,
             resource_attributes: None,
             scope_attributes: None,
+            severity_number: None,
+            severity_text: None,
         }
     }
 
     /// Starts building an assertion for spans with the specified name.
-    pub fn has_span_with_name<S: Into<String>>(&self, name: S) -> SpanAssertion<'_> {
+    pub fn expect_span_with_name<S: Into<String>>(&self, name: S) -> SpanAssertion<'_> {
         SpanAssertion {
             spans: &self.spans,
             name: Some(name.into()),
@@ -326,11 +330,11 @@ impl MockCollector {
     /// # use mock_collector::MockCollector;
     /// # let collector = MockCollector::new();
     /// collector
-    ///     .has_spans()
+    ///     .expect_span()
     ///     .with_resource_attributes([("service.name", "my-service")])
     ///     .assert_at_least(10);
     /// ```
-    pub fn has_spans(&self) -> SpanAssertion<'_> {
+    pub fn expect_span(&self) -> SpanAssertion<'_> {
         SpanAssertion {
             spans: &self.spans,
             name: None,
@@ -343,7 +347,7 @@ impl MockCollector {
     }
 
     /// Starts building an assertion for metrics with the specified name.
-    pub fn has_metric_with_name<S: Into<String>>(&self, name: S) -> MetricAssertion<'_> {
+    pub fn expect_metric_with_name<S: Into<String>>(&self, name: S) -> MetricAssertion<'_> {
         MetricAssertion {
             metrics: &self.metrics,
             name: Some(name.into()),
@@ -364,11 +368,11 @@ impl MockCollector {
     /// # use mock_collector::MockCollector;
     /// # let collector = MockCollector::new();
     /// collector
-    ///     .has_metrics()
+    ///     .expect_metric()
     ///     .with_resource_attributes([("service.name", "my-service")])
     ///     .assert_at_least(5);
     /// ```
-    pub fn has_metrics(&self) -> MetricAssertion<'_> {
+    pub fn expect_metric(&self) -> MetricAssertion<'_> {
         MetricAssertion {
             metrics: &self.metrics,
             name: None,
@@ -387,6 +391,8 @@ pub struct LogAssertion<'a> {
     attributes: Option<Vec<(String, Value)>>,
     resource_attributes: Option<Vec<(String, Value)>>,
     scope_attributes: Option<Vec<(String, Value)>>,
+    severity_number: Option<i32>,
+    severity_text: Option<String>,
 }
 
 impl<'a> LogAssertion<'a> {
@@ -396,7 +402,7 @@ impl<'a> LogAssertion<'a> {
     ///
     /// Panics with a descriptive message if no matching log is found.
     #[track_caller]
-    pub fn assert(&self) {
+    pub fn assert_exists(&self) {
         if !self.matches_any() {
             panic!("{}", self.build_error_message());
         }
@@ -474,11 +480,13 @@ impl<'a> LogAssertion<'a> {
     }
 
     /// Returns the number of logs that match the criteria.
+    #[must_use = "the count should be used"]
     pub fn count(&self) -> usize {
         self.logs.iter().filter(|log| self.matches(log)).count()
     }
 
     /// Returns all logs that match the criteria.
+    #[must_use = "the matching items should be used"]
     pub fn get_all(&self) -> Vec<&TestLogRecord> {
         self.logs.iter().filter(|log| self.matches(log)).collect()
     }
@@ -534,6 +542,60 @@ impl<'a> LogAssertion<'a> {
         self
     }
 
+    /// Adds severity number criteria to the assertion.
+    ///
+    /// Use the `SeverityNumber` enum from `opentelemetry_proto::tonic::logs::v1`.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use mock_collector::MockCollector;
+    /// use opentelemetry_proto::tonic::logs::v1::SeverityNumber;
+    ///
+    /// # let collector = MockCollector::new();
+    /// // Assert at least one ERROR level log exists
+    /// collector
+    ///     .expect_log()
+    ///     .with_severity(SeverityNumber::Error)
+    ///     .assert_exists();
+    ///
+    /// // Assert at least 3 DEBUG logs from a service
+    /// collector
+    ///     .expect_log()
+    ///     .with_severity(SeverityNumber::Debug)
+    ///     .with_resource_attributes([("service.name", "my-service")])
+    ///     .assert_at_least(3);
+    /// ```
+    #[must_use]
+    pub fn with_severity(
+        mut self,
+        severity: opentelemetry_proto::tonic::logs::v1::SeverityNumber,
+    ) -> Self {
+        self.severity_number = Some(severity as i32);
+        self
+    }
+
+    /// Adds severity text criteria to the assertion.
+    ///
+    /// This matches the `severity_text` field, which is the string representation
+    /// of the log level (e.g., "INFO", "ERROR", "DEBUG").
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_log()
+    ///     .with_severity_text("ERROR")
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_severity_text<S: Into<String>>(mut self, severity_text: S) -> Self {
+        self.severity_text = Some(severity_text.into());
+        self
+    }
+
     fn matches_any(&self) -> bool {
         self.logs.iter().any(|log| self.matches(log))
     }
@@ -573,6 +635,20 @@ impl<'a> LogAssertion<'a> {
         // Check scope attributes if specified
         if let Some(expected_scope_attrs) = &self.scope_attributes
             && !Self::check_attributes(&test_log.scope_attrs, expected_scope_attrs)
+        {
+            return false;
+        }
+
+        // Check severity number if specified
+        if let Some(expected_severity) = self.severity_number
+            && test_log.log_record.severity_number != expected_severity
+        {
+            return false;
+        }
+
+        // Check severity text if specified
+        if let Some(ref expected_text) = self.severity_text
+            && &test_log.log_record.severity_text != expected_text
         {
             return false;
         }
@@ -622,6 +698,12 @@ impl<'a> LogAssertion<'a> {
         let mut criteria = Vec::new();
         if let Some(body) = &self.body {
             criteria.push(format!("body={:?}", body));
+        }
+        if let Some(severity_num) = self.severity_number {
+            criteria.push(format!("severity_number={}", severity_num));
+        }
+        if let Some(ref severity_txt) = self.severity_text {
+            criteria.push(format!("severity_text={:?}", severity_txt));
         }
         if let Some(attrs) = &self.attributes {
             criteria.push(format!("attributes={:?}", attrs));
@@ -724,7 +806,7 @@ impl<'a> SpanAssertion<'a> {
     ///
     /// Panics with a descriptive message if no matching span is found.
     #[track_caller]
-    pub fn assert(&self) {
+    pub fn assert_exists(&self) {
         if !self.matches_any() {
             panic!("{}", self.build_error_message());
         }
@@ -738,7 +820,11 @@ impl<'a> SpanAssertion<'a> {
     #[track_caller]
     pub fn assert_not_exists(&self) {
         if self.matches_any() {
-            panic!("Expected no spans to match the criteria, but found at least one");
+            panic!(
+                "Expected no spans to match, but found {} matching span(s).\nCriteria: {}",
+                self.count(),
+                self.format_criteria()
+            );
         }
     }
 
@@ -751,7 +837,13 @@ impl<'a> SpanAssertion<'a> {
     pub fn assert_count(&self, expected: usize) {
         let actual = self.count();
         if actual != expected {
-            panic!("Expected exactly {} span(s) but found {}", expected, actual);
+            panic!(
+                "Expected {} matching span(s), but found {}.\nCriteria: {}\n\n{}",
+                expected,
+                actual,
+                self.format_criteria(),
+                self.format_matching_spans()
+            );
         }
     }
 
@@ -764,7 +856,12 @@ impl<'a> SpanAssertion<'a> {
     pub fn assert_at_least(&self, min: usize) {
         let actual = self.count();
         if actual < min {
-            panic!("Expected at least {} span(s) but found {}", min, actual);
+            panic!(
+                "Expected at least {} matching span(s), but found {}.\nCriteria: {}",
+                min,
+                actual,
+                self.format_criteria()
+            );
         }
     }
 
@@ -777,16 +874,23 @@ impl<'a> SpanAssertion<'a> {
     pub fn assert_at_most(&self, max: usize) {
         let actual = self.count();
         if actual > max {
-            panic!("Expected at most {} span(s) but found {}", max, actual);
+            panic!(
+                "Expected at most {} matching span(s), but found {}.\nCriteria: {}",
+                max,
+                actual,
+                self.format_criteria()
+            );
         }
     }
 
     /// Returns all spans that match the specified criteria.
+    #[must_use = "the matching items should be used"]
     pub fn get_all(&self) -> Vec<&TestSpan> {
         self.spans.iter().filter(|s| self.matches(s)).collect()
     }
 
     /// Returns the count of spans matching the criteria.
+    #[must_use = "the count should be used"]
     pub fn count(&self) -> usize {
         self.spans.iter().filter(|s| self.matches(s)).count()
     }
@@ -850,10 +954,10 @@ impl<'a> SpanAssertion<'a> {
     /// # use mock_collector::MockCollector;
     /// # let collector = MockCollector::new();
     /// collector
-    ///     .has_span_with_name("ProcessOrder")
+    ///     .expect_span_with_name("ProcessOrder")
     ///     .with_event("payment.initiated")
     ///     .with_event("payment.completed")
-    ///     .assert();
+    ///     .assert_exists();
     /// ```
     #[must_use]
     pub fn with_event<S: Into<String>>(mut self, event_name: S) -> Self {
@@ -876,12 +980,12 @@ impl<'a> SpanAssertion<'a> {
     /// # use mock_collector::MockCollector;
     /// # let collector = MockCollector::new();
     /// collector
-    ///     .has_span_with_name("ProcessOrder")
+    ///     .expect_span_with_name("ProcessOrder")
     ///     .with_event_attributes("exception", [
     ///         ("exception.type", "TimeoutError"),
     ///         ("exception.message", "Request timed out"),
     ///     ])
-    ///     .assert();
+    ///     .assert_exists();
     /// ```
     #[must_use]
     pub fn with_event_attributes<S, I, K, V>(mut self, event_name: S, attributes: I) -> Self
@@ -1025,6 +1129,42 @@ impl<'a> SpanAssertion<'a> {
         }
     }
 
+    fn format_criteria(&self) -> String {
+        let mut criteria = Vec::new();
+        if let Some(name) = &self.name {
+            criteria.push(format!("name={:?}", name));
+        }
+        if let Some(attrs) = &self.attributes {
+            criteria.push(format!("attributes={:?}", attrs));
+        }
+        if let Some(res_attrs) = &self.resource_attributes {
+            criteria.push(format!("resource_attributes={:?}", res_attrs));
+        }
+        if let Some(scope_attrs) = &self.scope_attributes {
+            criteria.push(format!("scope_attributes={:?}", scope_attrs));
+        }
+        if let Some(ref event_names) = self.event_names {
+            criteria.push(format!("event_names={:?}", event_names));
+        }
+        if let Some(ref event_attrs) = self.event_with_attributes {
+            criteria.push(format!("event_with_attributes={:?}", event_attrs));
+        }
+        criteria.join(", ")
+    }
+
+    fn format_matching_spans(&self) -> String {
+        let matching: Vec<_> = self.get_all();
+        if matching.is_empty() {
+            return String::new();
+        }
+
+        let mut output = String::from("Matching spans:\n");
+        for (idx, span) in matching.iter().enumerate() {
+            output.push_str(&format!("  [{}] name=\"{}\"\n", idx, span.span.name));
+        }
+        output
+    }
+
     fn build_error_message(&self) -> String {
         use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
 
@@ -1052,6 +1192,23 @@ impl<'a> SpanAssertion<'a> {
             msg.push_str("  scope_attributes:\n");
             for (k, v) in attrs {
                 msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if let Some(ref event_names) = self.event_names {
+            msg.push_str("  event_names:\n");
+            for name in event_names {
+                msg.push_str(&format!("    \"{}\"\n", name));
+            }
+        }
+
+        if let Some(ref event_attrs) = self.event_with_attributes {
+            msg.push_str("  event_with_attributes:\n");
+            for (event_name, attrs) in event_attrs {
+                msg.push_str(&format!("    \"{}\":\n", event_name));
+                for (k, v) in attrs {
+                    msg.push_str(&format!("      {}={:?}\n", k, v));
+                }
             }
         }
 
@@ -1110,9 +1267,9 @@ impl<'a> MetricAssertion<'a> {
     ///
     /// Panics with a descriptive message if no matching metric is found.
     #[track_caller]
-    pub fn assert(&self) {
+    pub fn assert_exists(&self) {
         if !self.matches_any() {
-            panic!("No metrics matched the assertion criteria");
+            panic!("{}", self.build_error_message());
         }
     }
 
@@ -1124,7 +1281,11 @@ impl<'a> MetricAssertion<'a> {
     #[track_caller]
     pub fn assert_not_exists(&self) {
         if self.matches_any() {
-            panic!("Expected no metrics to match the criteria, but found at least one");
+            panic!(
+                "Expected no metrics to match, but found {} matching metric(s).\nCriteria: {}",
+                self.count(),
+                self.format_criteria()
+            );
         }
     }
 
@@ -1138,8 +1299,11 @@ impl<'a> MetricAssertion<'a> {
         let actual = self.count();
         if actual != expected {
             panic!(
-                "Expected exactly {} metric(s) but found {}",
-                expected, actual
+                "Expected {} matching metric(s), but found {}.\nCriteria: {}\n\n{}",
+                expected,
+                actual,
+                self.format_criteria(),
+                self.format_matching_metrics()
             );
         }
     }
@@ -1153,7 +1317,12 @@ impl<'a> MetricAssertion<'a> {
     pub fn assert_at_least(&self, min: usize) {
         let actual = self.count();
         if actual < min {
-            panic!("Expected at least {} metric(s) but found {}", min, actual);
+            panic!(
+                "Expected at least {} matching metric(s), but found {}.\nCriteria: {}",
+                min,
+                actual,
+                self.format_criteria()
+            );
         }
     }
 
@@ -1166,16 +1335,23 @@ impl<'a> MetricAssertion<'a> {
     pub fn assert_at_most(&self, max: usize) {
         let actual = self.count();
         if actual > max {
-            panic!("Expected at most {} metric(s) but found {}", max, actual);
+            panic!(
+                "Expected at most {} matching metric(s), but found {}.\nCriteria: {}",
+                max,
+                actual,
+                self.format_criteria()
+            );
         }
     }
 
     /// Returns all metrics that match the specified criteria.
+    #[must_use = "the matching items should be used"]
     pub fn get_all(&self) -> Vec<&TestMetric> {
         self.metrics.iter().filter(|m| self.matches(m)).collect()
     }
 
     /// Returns the count of metrics matching the criteria.
+    #[must_use = "the count should be used"]
     pub fn count(&self) -> usize {
         self.metrics.iter().filter(|m| self.matches(m)).count()
     }
@@ -1334,6 +1510,123 @@ impl<'a> MetricAssertion<'a> {
             None => false,
         }
     }
+
+    fn format_criteria(&self) -> String {
+        let mut criteria = Vec::new();
+        if let Some(name) = &self.name {
+            criteria.push(format!("name={:?}", name));
+        }
+        if let Some(attrs) = &self.attributes {
+            criteria.push(format!("attributes={:?}", attrs));
+        }
+        if let Some(res_attrs) = &self.resource_attributes {
+            criteria.push(format!("resource_attributes={:?}", res_attrs));
+        }
+        if let Some(scope_attrs) = &self.scope_attributes {
+            criteria.push(format!("scope_attributes={:?}", scope_attrs));
+        }
+        criteria.join(", ")
+    }
+
+    fn format_matching_metrics(&self) -> String {
+        let matching: Vec<_> = self.get_all();
+        if matching.is_empty() {
+            return String::new();
+        }
+
+        let mut output = String::from("Matching metrics:\n");
+        for (idx, metric) in matching.iter().enumerate() {
+            output.push_str(&format!("  [{}] name=\"{}\"\n", idx, metric.metric.name));
+        }
+        output
+    }
+
+    fn build_error_message(&self) -> String {
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
+
+        let mut msg = String::from("No metrics matched the assertion.\n\nExpected:\n");
+
+        if let Some(ref name) = self.name {
+            msg.push_str(&format!("  name: \"{}\"\n", name));
+        }
+
+        if let Some(ref attrs) = self.attributes {
+            msg.push_str("  attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if let Some(ref attrs) = self.resource_attributes {
+            msg.push_str("  resource_attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if let Some(ref attrs) = self.scope_attributes {
+            msg.push_str("  scope_attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        msg.push_str(&format!(
+            "\nFound {} metric(s) in collector:\n",
+            self.metrics.len()
+        ));
+
+        if !self.metrics.is_empty() {
+            for (idx, metric) in self.metrics.iter().take(10).enumerate() {
+                msg.push_str(&format!("  [{}] name=\"{}\"", idx, metric.metric.name));
+
+                // Show a sample of data point attributes if available
+                if let Some(ref data) = metric.metric.data {
+                    use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+                    let sample_attrs = match data {
+                        Data::Gauge(g) => g.data_points.first().map(|dp| &dp.attributes),
+                        Data::Sum(s) => s.data_points.first().map(|dp| &dp.attributes),
+                        Data::Histogram(h) => h.data_points.first().map(|dp| &dp.attributes),
+                        Data::ExponentialHistogram(e) => {
+                            e.data_points.first().map(|dp| &dp.attributes)
+                        }
+                        Data::Summary(s) => s.data_points.first().map(|dp| &dp.attributes),
+                    };
+
+                    if let Some(attrs) = sample_attrs
+                        && !attrs.is_empty()
+                    {
+                        msg.push_str(", attributes={");
+                        for (i, attr) in attrs.iter().take(3).enumerate() {
+                            if i > 0 {
+                                msg.push_str(", ");
+                            }
+                            msg.push_str(&attr.key);
+                            msg.push('=');
+                            if let Some(val) = &attr.value
+                                && let Some(AnyValue::StringValue(s)) = &val.value
+                            {
+                                msg.push_str(&format!("\"{}\"", s));
+                            } else if let Some(val) = &attr.value
+                                && let Some(AnyValue::IntValue(i)) = &val.value
+                            {
+                                msg.push_str(&format!("{}", i));
+                            }
+                        }
+                        msg.push('}');
+                    }
+                }
+
+                msg.push('\n');
+            }
+
+            if self.metrics.len() > 10 {
+                msg.push_str(&format!("  ... and {} more\n", self.metrics.len() - 10));
+            }
+        }
+
+        msg
+    }
 }
 
 #[cfg(test)]
@@ -1344,10 +1637,10 @@ mod tests {
     #[should_panic(expected = "No logs matched the assertion")]
     fn test_errors_if_no_logs_match() {
         let mc = MockCollector::new();
-        mc.has_log_with_body("hi there")
+        mc.expect_log_with_body("hi there")
             .with_attributes([("key", "value")])
             .with_resource_attributes([("key", "value")])
-            .assert();
+            .assert_exists();
     }
 
     #[test]
