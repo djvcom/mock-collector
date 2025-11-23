@@ -1,0 +1,14 @@
+[workspace]
+# Enable changelog updates
+changelog_update = true
+# Create git tags for releases
+git_tag_enable = true
+# Prefix git tags with 'v'
+git_tag_name = "v{{ version }}"
+# Release on every commit to main
+git_release_enable = true
+
+[[package]]
+name = "mock-collector"
+# Use conventional commits to determine version bumps
+changelog_include = ["feat", "fix", "perf", "refactor", "docs"]
