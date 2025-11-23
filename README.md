@@ -4,9 +4,9 @@ A mock OpenTelemetry OTLP collector server for testing applications that export 
 
 ## Features
 
-- **Multiple Signal Support**: Logs and Traces (Metrics coming soon)
+- **Multiple Signal Support**: Logs, Traces, and Metrics
 - **Multiple Protocol Support**: gRPC, HTTP/Protobuf, and HTTP/JSON
-- **Single Collector**: One collector handles all signals - test logs and traces together
+- **Single Collector**: One collector handles all signals - test logs, traces, and metrics together
 - **Fluent Assertion API**: Easy-to-use builder pattern for test assertions
 - **Flexible Matching**: Match by body/name, attributes, resource attributes, and scope attributes
 - **Count-Based Assertions**: Assert exact counts, minimum, or maximum number of matches
@@ -129,21 +129,53 @@ async fn test_traces() {
 }
 ```
 
-### Testing Logs and Traces Together
+### Testing Metrics
 
-One collector handles both signals simultaneously:
+The same server automatically supports metrics! Simply use the metric assertion API:
+
+```rust
+use mock_collector::{MockServer, Protocol};
+
+#[tokio::test]
+async fn test_metrics() {
+    let server = MockServer::builder().start().await.unwrap();
+
+    // Your application exports metrics to the server...
+    // For gRPC: server.addr()
+    // For HTTP: http://{server.addr()}/v1/metrics
+
+    server.with_collector(|collector| {
+        // Assert on metrics
+        collector
+            .has_metric_with_name("http_requests_total")
+            .with_attributes([("method", "GET")])
+            .with_resource_attributes([("service.name", "api-gateway")])
+            .assert();
+
+        // Count assertions work too
+        collector
+            .has_metric_with_name("db_query_duration")
+            .assert_at_least(1);
+    }).await;
+}
+```
+
+### Testing All Signals Together
+
+One collector handles all three signals simultaneously:
 
 ```rust
 #[tokio::test]
-async fn test_logs_and_traces() {
+async fn test_all_signals() {
     let server = MockServer::builder().start().await.unwrap();
 
-    // Your app exports both logs and traces...
+    // Your app exports logs, traces, and metrics...
 
     server.with_collector(|collector| {
-        // Verify both signals were collected
+        // Verify all signals were collected
         assert_eq!(collector.log_count(), 10);
         assert_eq!(collector.span_count(), 15);
+        assert_eq!(collector.metric_count(), 5);
 
         // Assert on logs
         collector
@@ -153,6 +185,11 @@ async fn test_logs_and_traces() {
         // Assert on traces
         collector
             .has_span_with_name("handle_request")
+            .assert();
+
+        // Assert on metrics
+        collector
+            .has_metric_with_name("requests_total")
             .assert();
     }).await;
 }
@@ -200,9 +237,30 @@ collector.has_span_with_name("cache.lookup").assert_at_least(10);
 collector.has_span_with_name("external.api.call").assert_at_most(3);
 ```
 
+### Metric Assertions
+
+Metric assertions use the same fluent API:
+
+```rust
+// Assert at least one metric matches
+collector.has_metric_with_name("http_requests_total").assert();
+
+// Assert no metrics match (negative assertion)
+collector.has_metric_with_name("deprecated_metric").assert_not_exists();
+
+// Assert exact count
+collector.has_metric_with_name("db_connections").assert_count(1);
+
+// Assert minimum
+collector.has_metric_with_name("cache_hits").assert_at_least(5);
+
+// Assert maximum
+collector.has_metric_with_name("errors_total").assert_at_most(2);
+```
+
 ### Matching Criteria
 
-Both logs and spans support matching on attributes, resource attributes, and scope attributes:
+All three signals (logs, spans, and metrics) support matching on attributes, resource attributes, and scope attributes:
 
 ```rust
 // Logs
@@ -235,6 +293,21 @@ collector
         ("library.name", "auth-lib"),
     ])
     .assert();
+
+// Metrics (same API!)
+collector
+    .has_metric_with_name("http_requests_total")
+    .with_attributes([
+        ("method", "POST"),
+        ("status", "200"),
+    ])
+    .with_resource_attributes([
+        ("service.name", "api-gateway"),
+    ])
+    .with_scope_attributes([
+        ("meter.name", "http-metrics"),
+    ])
+    .assert();
 ```
 
 ### Inspection Methods
@@ -243,6 +316,7 @@ collector
 // Get counts
 let log_count = collector.log_count();
 let span_count = collector.span_count();
+let metric_count = collector.metric_count();
 
 // Get matching items
 let log_assertion = collector.has_log_with_body("error");
@@ -253,10 +327,14 @@ let span_assertion = collector.has_span_with_name("database.query");
 let matching_spans = span_assertion.get_all();
 let span_match_count = span_assertion.count();
 
-// Clear all collected data (logs AND spans)
+let metric_assertion = collector.has_metric_with_name("requests_total");
+let matching_metrics = metric_assertion.get_all();
+let metric_match_count = metric_assertion.count();
+
+// Clear all collected data (logs, spans, AND metrics)
 collector.clear();
 
-// Debug dump all logs
+// Debug dump all data
 println!("{}", collector.dump());
 ```
 
@@ -292,7 +370,7 @@ let log_count = collector.read().await.log_count();
 
 This library was inspired by `fake-opentelemetry-collector` but adds:
 
-- **Trace Support**: Test both logs and traces in the same collector
+- **Full Signal Support**: Test logs, traces, and metrics in the same collector
 - **HTTP Protocol Support**: Both JSON and Protobuf over HTTP, not just gRPC
 - **Fluent Assertion API**: Builder pattern for more readable tests
 - **Count Assertions**: `assert_count()`, `assert_at_least()`, `assert_at_most()`

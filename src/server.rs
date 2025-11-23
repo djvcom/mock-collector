@@ -8,6 +8,10 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
     ExportTraceServiceRequest, ExportTraceServiceResponse,
     trace_service_server::{TraceService, TraceServiceServer},
 };
+use opentelemetry_proto::tonic::collector::metrics::v1::{
+    ExportMetricsServiceRequest, ExportMetricsServiceResponse,
+    metrics_service_server::{MetricsService, MetricsServiceServer},
+};
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 use tokio::net::TcpListener;
@@ -218,7 +222,10 @@ impl MockServer {
         let logs_service = GrpcLogsService {
             collector: collector.clone(),
         };
-        let trace_service = GrpcTraceService { collector };
+        let trace_service = GrpcTraceService {
+            collector: collector.clone(),
+        };
+        let metrics_service = GrpcMetricsService { collector };
 
         let addr = SocketAddr::new(self.host, self.port);
         let listener = TcpListener::bind(addr)
@@ -234,6 +241,7 @@ impl MockServer {
             tonic::transport::Server::builder()
                 .add_service(LogsServiceServer::new(logs_service))
                 .add_service(TraceServiceServer::new(trace_service))
+                .add_service(MetricsServiceServer::new(metrics_service))
                 .serve_with_incoming_shutdown(
                     tokio_stream::wrappers::TcpListenerStream::new(listener),
                     async {
@@ -266,6 +274,7 @@ impl MockServer {
         let app = Router::new()
             .route("/v1/logs", post(handle_http_logs))
             .route("/v1/traces", post(handle_http_traces))
+            .route("/v1/metrics", post(handle_http_metrics))
             .with_state(HttpServerState {
                 collector: collector.clone(),
                 protocol,
@@ -420,6 +429,27 @@ impl TraceService for GrpcTraceService {
     }
 }
 
+#[derive(Clone)]
+struct GrpcMetricsService {
+    collector: Arc<RwLock<MockCollector>>,
+}
+
+#[tonic::async_trait]
+impl MetricsService for GrpcMetricsService {
+    async fn export(
+        &self,
+        request: Request<ExportMetricsServiceRequest>,
+    ) -> Result<Response<ExportMetricsServiceResponse>, Status> {
+        let req = request.into_inner();
+
+        self.collector.write().await.add_metrics(req);
+
+        Ok(Response::new(ExportMetricsServiceResponse {
+            partial_success: None,
+        }))
+    }
+}
+
 // HTTP protocol type
 #[derive(Clone, Copy, Debug)]
 enum HttpProtocol {
@@ -470,6 +500,37 @@ impl HttpProtocol {
     fn encode_traces(
         &self,
         response: &ExportTraceServiceResponse,
+    ) -> Result<Vec<u8>, MockServerError> {
+        match self {
+            HttpProtocol::Json => {
+                serde_json::to_vec(response).map_err(MockServerError::JsonParseError)
+            }
+            HttpProtocol::Binary => {
+                let mut buf = Vec::new();
+                prost::Message::encode(response, &mut buf)
+                    .map_err(|e| MockServerError::EncodeError(e.to_string()))?;
+                Ok(buf)
+            }
+        }
+    }
+
+    fn decode_metrics(
+        &self,
+        body: &[u8],
+    ) -> Result<ExportMetricsServiceRequest, MockServerError> {
+        match self {
+            HttpProtocol::Json => {
+                serde_json::from_slice(body).map_err(MockServerError::JsonParseError)
+            }
+            HttpProtocol::Binary => {
+                prost::Message::decode(body).map_err(MockServerError::ProtobufParseError)
+            }
+        }
+    }
+
+    fn encode_metrics(
+        &self,
+        response: &ExportMetricsServiceResponse,
     ) -> Result<Vec<u8>, MockServerError> {
         match self {
             HttpProtocol::Json => {
@@ -560,6 +621,45 @@ async fn handle_http_traces(
     };
 
     match state.protocol.encode_traces(&response) {
+        Ok(bytes) => (
+            StatusCode::OK,
+            [(
+                axum::http::header::CONTENT_TYPE,
+                state.protocol.content_type(),
+            )],
+            bytes,
+        )
+            .into_response(),
+        Err(e) => (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("Failed to encode response: {}", e),
+        )
+            .into_response(),
+    }
+}
+
+async fn handle_http_metrics(
+    State(state): State<HttpServerState>,
+    body: axum::body::Bytes,
+) -> impl IntoResponse {
+    let request = match state.protocol.decode_metrics(&body) {
+        Ok(req) => req,
+        Err(e) => {
+            return (
+                StatusCode::BAD_REQUEST,
+                format!("Failed to parse request: {}", e),
+            )
+                .into_response();
+        }
+    };
+
+    state.collector.write().await.add_metrics(request);
+
+    let response = ExportMetricsServiceResponse {
+        partial_success: None,
+    };
+
+    match state.protocol.encode_metrics(&response) {
         Ok(bytes) => (
             StatusCode::OK,
             [(

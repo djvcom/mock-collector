@@ -1,6 +1,11 @@
 use opentelemetry_proto::tonic::{
-    collector::logs::v1::ExportLogsServiceRequest, collector::trace::v1::ExportTraceServiceRequest,
-    common::v1::KeyValue, logs::v1::LogRecord, trace::v1::Span,
+    collector::logs::v1::ExportLogsServiceRequest,
+    collector::metrics::v1::ExportMetricsServiceRequest,
+    collector::trace::v1::ExportTraceServiceRequest,
+    common::v1::KeyValue,
+    logs::v1::LogRecord,
+    metrics::v1::Metric,
+    trace::v1::Span,
 };
 use serde_json::Value;
 use std::sync::Arc;
@@ -61,11 +66,40 @@ impl TestSpan {
     }
 }
 
-/// A mock collector that stores received OTLP logs and traces for test assertions.
+/// A flattened metric with resource and scope attributes copied for easy test assertions.
+///
+/// We flatten the OTLP structure such that a copy of the resource attrs and scope attrs
+/// are available on each test metric to make it easy to assert against.
+#[derive(Debug, Clone)]
+pub struct TestMetric {
+    resource_attrs: Arc<Vec<KeyValue>>,
+    scope_attrs: Arc<Vec<KeyValue>>,
+    metric: Metric,
+}
+
+impl TestMetric {
+    /// Returns a reference to the resource attributes.
+    pub fn resource_attrs(&self) -> &[KeyValue] {
+        &self.resource_attrs
+    }
+
+    /// Returns a reference to the scope attributes.
+    pub fn scope_attrs(&self) -> &[KeyValue] {
+        &self.scope_attrs
+    }
+
+    /// Returns a reference to the underlying metric.
+    pub fn metric(&self) -> &Metric {
+        &self.metric
+    }
+}
+
+/// A mock collector that stores received OTLP logs, traces, and metrics for test assertions.
 #[derive(Debug, Clone, Default)]
 pub struct MockCollector {
     logs: Vec<TestLogRecord>,
     spans: Vec<TestSpan>,
+    metrics: Vec<TestMetric>,
 }
 
 impl MockCollector {
@@ -109,10 +143,11 @@ impl MockCollector {
         self.logs.len()
     }
 
-    /// Clears all collected logs and spans.
+    /// Clears all collected logs, spans, and metrics.
     pub fn clear(&mut self) {
         self.logs.clear();
         self.spans.clear();
+        self.metrics.clear();
     }
 
     fn spans_from_request(req: ExportTraceServiceRequest) -> Vec<TestSpan> {
@@ -148,6 +183,41 @@ impl MockCollector {
     /// Returns the total number of collected spans.
     pub fn span_count(&self) -> usize {
         self.spans.len()
+    }
+
+    fn metrics_from_request(req: ExportMetricsServiceRequest) -> Vec<TestMetric> {
+        let mut metrics = vec![];
+        for rm in req.resource_metrics {
+            let resource_attrs = Arc::new(rm.resource.map(|r| r.attributes).unwrap_or_default());
+
+            for sm in rm.scope_metrics {
+                let scope_attrs = Arc::new(sm.scope.map(|s| s.attributes).unwrap_or_default());
+
+                for metric in sm.metrics {
+                    metrics.push(TestMetric {
+                        metric,
+                        resource_attrs: Arc::clone(&resource_attrs),
+                        scope_attrs: Arc::clone(&scope_attrs),
+                    });
+                }
+            }
+        }
+        metrics
+    }
+
+    /// Adds metrics from an OTLP export request to the collector.
+    pub fn add_metrics(&mut self, req: ExportMetricsServiceRequest) {
+        self.metrics.extend(Self::metrics_from_request(req));
+    }
+
+    /// Returns a reference to all collected metrics.
+    pub fn metrics(&self) -> &[TestMetric] {
+        &self.metrics
+    }
+
+    /// Returns the total number of collected metrics.
+    pub fn metric_count(&self) -> usize {
+        self.metrics.len()
     }
 
     /// Returns a formatted string representation of all logs for debugging.
@@ -272,6 +342,42 @@ impl MockCollector {
             scope_attributes: None,
             event_names: None,
             event_with_attributes: None,
+        }
+    }
+
+    /// Starts building an assertion for metrics with the specified name.
+    pub fn has_metric_with_name<S: Into<String>>(&self, name: S) -> MetricAssertion<'_> {
+        MetricAssertion {
+            metrics: &self.metrics,
+            name: Some(name.into()),
+            attributes: None,
+            resource_attributes: None,
+            scope_attributes: None,
+        }
+    }
+
+    /// Starts building an assertion for metrics without specifying a name.
+    ///
+    /// This is useful when you want to assert on metrics based only on their attributes,
+    /// resource attributes, or scope attributes, without filtering by name.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .has_metrics()
+    ///     .with_resource_attributes([("service.name", "my-service")])
+    ///     .assert_at_least(5);
+    /// ```
+    pub fn has_metrics(&self) -> MetricAssertion<'_> {
+        MetricAssertion {
+            metrics: &self.metrics,
+            name: None,
+            attributes: None,
+            resource_attributes: None,
+            scope_attributes: None,
         }
     }
 }
@@ -987,6 +1093,244 @@ impl<'a> SpanAssertion<'a> {
         }
 
         msg
+    }
+}
+
+/// A builder for constructing metric assertions.
+#[derive(Debug)]
+pub struct MetricAssertion<'a> {
+    metrics: &'a [TestMetric],
+    name: Option<String>,
+    attributes: Option<Vec<(String, Value)>>,
+    resource_attributes: Option<Vec<(String, Value)>>,
+    scope_attributes: Option<Vec<(String, Value)>>,
+}
+
+impl<'a> MetricAssertion<'a> {
+    /// Asserts that at least one metric matches all specified criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics with a descriptive message if no matching metric is found.
+    #[track_caller]
+    pub fn assert(&self) {
+        if !self.matches_any() {
+            panic!("No metrics matched the assertion criteria");
+        }
+    }
+
+    /// Asserts that no metrics match the specified criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any metrics match the criteria.
+    #[track_caller]
+    pub fn assert_not_exists(&self) {
+        if self.matches_any() {
+            panic!("Expected no metrics to match the criteria, but found at least one");
+        }
+    }
+
+    /// Asserts that exactly the specified number of metrics match the criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the count doesn't match exactly.
+    #[track_caller]
+    pub fn assert_count(&self, expected: usize) {
+        let actual = self.count();
+        if actual != expected {
+            panic!(
+                "Expected exactly {} metric(s) but found {}",
+                expected, actual
+            );
+        }
+    }
+
+    /// Asserts that at least the specified number of metrics match the criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if fewer metrics match than expected.
+    #[track_caller]
+    pub fn assert_at_least(&self, min: usize) {
+        let actual = self.count();
+        if actual < min {
+            panic!("Expected at least {} metric(s) but found {}", min, actual);
+        }
+    }
+
+    /// Asserts that at most the specified number of metrics match the criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if more metrics match than expected.
+    #[track_caller]
+    pub fn assert_at_most(&self, max: usize) {
+        let actual = self.count();
+        if actual > max {
+            panic!("Expected at most {} metric(s) but found {}", max, actual);
+        }
+    }
+
+    /// Returns all metrics that match the specified criteria.
+    pub fn get_all(&self) -> Vec<&TestMetric> {
+        self.metrics.iter().filter(|m| self.matches(m)).collect()
+    }
+
+    /// Returns the count of metrics matching the criteria.
+    pub fn count(&self) -> usize {
+        self.metrics.iter().filter(|m| self.matches(m)).count()
+    }
+
+    /// Adds metric attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_attributes<I, K, V>(mut self, attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.attributes = Some(attrs);
+        self
+    }
+
+    /// Adds resource attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_resource_attributes<I, K, V>(mut self, resource_attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = resource_attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.resource_attributes = Some(attrs);
+        self
+    }
+
+    /// Adds scope attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_scope_attributes<I, K, V>(mut self, scope_attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = scope_attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.scope_attributes = Some(attrs);
+        self
+    }
+
+    fn matches_any(&self) -> bool {
+        self.metrics.iter().any(|m| self.matches(m))
+    }
+
+    fn matches(&self, metric: &TestMetric) -> bool {
+        // Check name
+        if let Some(ref expected_name) = self.name
+            && &metric.metric.name != expected_name
+        {
+            return false;
+        }
+
+        // Check metric attributes (data point attributes)
+        if let Some(ref expected_attrs) = self.attributes {
+            // Metrics have data points with attributes
+            // We check if any data point has the expected attributes
+            let has_matching_data_point = Self::check_metric_data_points(&metric.metric, expected_attrs);
+            if !has_matching_data_point {
+                return false;
+            }
+        }
+
+        // Check resource attributes
+        if let Some(ref expected_attrs) = self.resource_attributes {
+            if !Self::check_attributes(&metric.resource_attrs, expected_attrs) {
+                return false;
+            }
+        }
+
+        // Check scope attributes
+        if let Some(ref expected_attrs) = self.scope_attributes {
+            if !Self::check_attributes(&metric.scope_attrs, expected_attrs) {
+                return false;
+            }
+        }
+
+        true
+    }
+
+    fn check_metric_data_points(metric: &Metric, expected: &[(String, Value)]) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+
+        // Check data points based on metric type
+        if let Some(ref data) = metric.data {
+            match data {
+                Data::Gauge(gauge) => {
+                    gauge.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
+                }
+                Data::Sum(sum) => {
+                    sum.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
+                }
+                Data::Histogram(histogram) => {
+                    histogram.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
+                }
+                Data::ExponentialHistogram(hist) => {
+                    hist.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
+                }
+                Data::Summary(summary) => {
+                    summary.data_points.iter().any(|dp| Self::check_attributes(&dp.attributes, expected))
+                }
+            }
+        } else {
+            false
+        }
+    }
+
+    fn check_attributes(attrs: &[KeyValue], expected: &[(String, Value)]) -> bool {
+        expected.iter().all(|(key, value)| {
+            attrs.iter().any(|kv| &kv.key == key && Self::any_value_matches(&kv.value, value))
+        })
+    }
+
+    fn any_value_matches(
+        attr_value: &Option<opentelemetry_proto::tonic::common::v1::AnyValue>,
+        expected: &Value,
+    ) -> bool {
+        use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
+
+        match attr_value {
+            Some(av) => match &av.value {
+                Some(AnyValue::StringValue(s)) => expected
+                    .as_str()
+                    .map(|exp| s == exp)
+                    .unwrap_or(false),
+                Some(AnyValue::IntValue(i)) => expected
+                    .as_i64()
+                    .map(|exp| *i == exp)
+                    .unwrap_or(false),
+                Some(AnyValue::DoubleValue(d)) => expected
+                    .as_f64()
+                    .map(|n| (*d - n).abs() < f64::EPSILON)
+                    .unwrap_or(false),
+                Some(AnyValue::BoolValue(b)) => expected
+                    .as_bool()
+                    .map(|exp| *b == exp)
+                    .unwrap_or(false),
+                _ => false,
+            },
+            None => false,
+        }
     }
 }
 

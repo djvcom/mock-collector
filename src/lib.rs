@@ -1,16 +1,16 @@
 //! A mock OpenTelemetry OTLP collector server for testing.
 //!
-//! This library provides a mock collector that can receive OTLP logs and traces over gRPC, HTTP/JSON, or HTTP/Protobuf,
+//! This library provides a mock collector that can receive OTLP logs, traces, and metrics over gRPC, HTTP/JSON, or HTTP/Protobuf,
 //! and provides a fluent assertion API for verifying the received telemetry data in tests.
 //!
 //! # Features
 //!
-//! - **Multiple Signal Support**: Logs and Traces (Metrics coming soon)
-//! - **Single Collector**: One collector handles all signals - test logs and traces together
+//! - **Multiple Signal Support**: Logs, Traces, and Metrics
+//! - **Single Collector**: One collector handles all signals - test logs, traces, and metrics together
 //! - **Multiple Protocol Support**: gRPC, HTTP/Protobuf, and HTTP/JSON
 //! - **Fluent Assertion API**: Easy-to-use builder pattern for test assertions
 //! - **Count-Based Assertions**: Assert exact counts, minimums, or maximums
-//! - **Negative Assertions**: Verify logs/spans don't exist
+//! - **Negative Assertions**: Verify logs/spans/metrics don't exist
 //! - **Async-Ready**: Built with Tokio for async/await compatibility
 //! - **Graceful Shutdown**: Proper resource cleanup
 //!
@@ -21,10 +21,10 @@
 //!
 //! #[tokio::main]
 //! async fn main() -> Result<(), Box<dyn std::error::Error>> {
-//!     // Start a server (supports logs and traces)
+//!     // Start a server (supports logs, traces, and metrics)
 //!     let server = MockServer::builder().start().await?;
 //!
-//!     // Your application exports logs and traces here...
+//!     // Your application exports logs, traces, and metrics here...
 //!
 //!     // Assert on collected data
 //!     server.with_collector(|collector| {
@@ -39,6 +39,12 @@
 //!             .has_span_with_name("Initialize")
 //!             .with_resource_attributes([("service.name", "my-service")])
 //!             .assert();
+//!
+//!         // Metrics
+//!         collector
+//!             .has_metric_with_name("requests_total")
+//!             .with_resource_attributes([("service.name", "my-service")])
+//!             .assert();
 //!     }).await;
 //!
 //!     // Graceful shutdown
@@ -49,7 +55,7 @@
 //!
 //! # Assertion API
 //!
-//! The library provides assertion methods for both logs and traces:
+//! The library provides assertion methods for logs, traces, and metrics:
 //!
 //! ## Log Assertions
 //!
@@ -67,6 +73,14 @@
 //! - [`SpanAssertion::assert_at_least`]: Assert minimum matches
 //! - [`SpanAssertion::assert_at_most`]: Assert maximum matches
 //!
+//! ## Metric Assertions
+//!
+//! - [`MetricAssertion::assert`]: Assert at least one metric matches
+//! - [`MetricAssertion::assert_not_exists`]: Assert no metrics match
+//! - [`MetricAssertion::assert_count`]: Assert exact number of matches
+//! - [`MetricAssertion::assert_at_least`]: Assert minimum matches
+//! - [`MetricAssertion::assert_at_most`]: Assert maximum matches
+//!
 //! # Examples
 //!
 //! See the [examples directory](https://github.com/youruser/mock-collector/tree/main/examples)
@@ -76,7 +90,10 @@ mod collector;
 mod error;
 mod server;
 
-pub use collector::{LogAssertion, MockCollector, SpanAssertion, TestLogRecord, TestSpan};
+pub use collector::{
+    LogAssertion, MetricAssertion, MockCollector, SpanAssertion, TestLogRecord, TestMetric,
+    TestSpan,
+};
 pub use error::MockServerError;
 pub use opentelemetry_otlp::Protocol;
 pub use server::{MockServer, MockServerBuilder, ServerHandle};

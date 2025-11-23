@@ -408,3 +408,251 @@ async fn test_span_event_assertions() {
 
     server.shutdown().await.expect("Failed to shutdown");
 }
+
+#[tokio::test]
+async fn test_http_json_metrics_with_official_example() {
+    // Start HTTP JSON server
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpJson)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load official OTLP example
+    let example_json = fs::read_to_string("opentelemetry-proto-examples/examples/metrics.json")
+        .expect("Failed to read metrics.json example");
+
+    // Send to server
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("http://{}/v1/metrics", server.addr()))
+        .header("Content-Type", "application/json")
+        .body(example_json)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    // Assert on collected data
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.metric_count(), 4);
+
+            // Verify the counter metric
+            collector.has_metric_with_name("my.counter").assert();
+
+            // Verify resource attributes
+            collector
+                .has_metric_with_name("my.counter")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert();
+
+            // Verify scope attributes
+            collector
+                .has_metric_with_name("my.counter")
+                .with_scope_attributes([("my.scope.attribute", "some scope attribute")])
+                .assert();
+
+            // Verify metric data point attributes
+            collector
+                .has_metric_with_name("my.counter")
+                .with_attributes([("my.counter.attr", "some value")])
+                .assert();
+
+            // Verify gauge metric
+            collector
+                .has_metric_with_name("my.gauge")
+                .with_attributes([("my.gauge.attr", "some value")])
+                .assert();
+
+            // Verify histogram metric
+            collector
+                .has_metric_with_name("my.histogram")
+                .with_attributes([("my.histogram.attr", "some value")])
+                .assert();
+
+            // Verify exponential histogram metric exists (note: HTTP JSON/Protobuf has
+            // a known limitation in opentelemetry-proto 0.31.0 where exponentialHistogram
+            // data is not properly deserialized, so we only check name here)
+            collector
+                .has_metric_with_name("my.exponential.histogram")
+                .assert();
+
+            // Test count assertions
+            collector
+                .has_metric_with_name("my.counter")
+                .assert_count(1);
+
+            // Test has_metrics() without name filter
+            collector
+                .has_metrics()
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert_count(4);
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_http_protobuf_metrics_with_official_example() {
+    // Start HTTP Protobuf server
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpBinary)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load and parse JSON example
+    let example_json = fs::read_to_string("opentelemetry-proto-examples/examples/metrics.json")
+        .expect("Failed to read metrics.json example");
+
+    let metrics_request: opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest =
+        serde_json::from_str(&example_json).expect("Failed to parse JSON");
+
+    // Convert to protobuf bytes
+    use prost::Message;
+    let proto_bytes = metrics_request.encode_to_vec();
+
+    // Send to server
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("http://{}/v1/metrics", server.addr()))
+        .header("Content-Type", "application/x-protobuf")
+        .body(proto_bytes)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    // Assert on collected data (same assertions as JSON test)
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.metric_count(), 4);
+
+            collector
+                .has_metric_with_name("my.counter")
+                .with_resource_attributes([("service.name", "my.service")])
+                .with_scope_attributes([("my.scope.attribute", "some scope attribute")])
+                .with_attributes([("my.counter.attr", "some value")])
+                .assert();
+
+            collector
+                .has_metric_with_name("my.gauge")
+                .with_attributes([("my.gauge.attr", "some value")])
+                .assert();
+
+            collector
+                .has_metric_with_name("my.histogram")
+                .with_attributes([("my.histogram.attr", "some value")])
+                .assert();
+
+            // Exponential histogram (same limitation as JSON test)
+            collector
+                .has_metric_with_name("my.exponential.histogram")
+                .assert();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_grpc_all_signals_simultaneously() {
+    // Start gRPC server (supports logs, traces, and metrics)
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load examples
+    let logs_json = fs::read_to_string("opentelemetry-proto-examples/examples/logs.json")
+        .expect("Failed to read logs.json");
+    let trace_json = fs::read_to_string("opentelemetry-proto-examples/examples/trace.json")
+        .expect("Failed to read trace.json");
+    let metrics_json = fs::read_to_string("opentelemetry-proto-examples/examples/metrics.json")
+        .expect("Failed to read metrics.json");
+
+    let logs_request: opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest =
+        serde_json::from_str(&logs_json).expect("Failed to parse logs JSON");
+    let trace_request: opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest =
+        serde_json::from_str(&trace_json).expect("Failed to parse trace JSON");
+    let metrics_request: opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest =
+        serde_json::from_str(&metrics_json).expect("Failed to parse metrics JSON");
+
+    // Send via gRPC
+    use opentelemetry_proto::tonic::collector::logs::v1::logs_service_client::LogsServiceClient;
+    use opentelemetry_proto::tonic::collector::metrics::v1::metrics_service_client::MetricsServiceClient;
+    use opentelemetry_proto::tonic::collector::trace::v1::trace_service_client::TraceServiceClient;
+
+    let mut logs_client = LogsServiceClient::connect(format!("http://{}", server.addr()))
+        .await
+        .expect("Failed to connect logs client");
+
+    let mut trace_client = TraceServiceClient::connect(format!("http://{}", server.addr()))
+        .await
+        .expect("Failed to connect trace client");
+
+    let mut metrics_client = MetricsServiceClient::connect(format!("http://{}", server.addr()))
+        .await
+        .expect("Failed to connect metrics client");
+
+    // Send logs
+    let log_response = logs_client
+        .export(logs_request)
+        .await
+        .expect("Failed to export logs");
+    assert!(log_response.into_inner().partial_success.is_none());
+
+    // Send traces
+    let trace_response = trace_client
+        .export(trace_request)
+        .await
+        .expect("Failed to export traces");
+    assert!(trace_response.into_inner().partial_success.is_none());
+
+    // Send metrics
+    let metrics_response = metrics_client
+        .export(metrics_request)
+        .await
+        .expect("Failed to export metrics");
+    assert!(metrics_response.into_inner().partial_success.is_none());
+
+    // Assert all three signals were collected
+    server
+        .with_collector(|collector| {
+            // All signals should be present
+            assert_eq!(collector.log_count(), 1);
+            assert_eq!(collector.span_count(), 1);
+            assert_eq!(collector.metric_count(), 4);
+
+            // Verify log
+            collector
+                .has_log_with_body("Example log record")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert();
+
+            // Verify span
+            collector
+                .has_span_with_name("I'm a server span")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert();
+
+            // Verify metrics
+            collector
+                .has_metric_with_name("my.counter")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert();
+
+            collector
+                .has_metric_with_name("my.gauge")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
