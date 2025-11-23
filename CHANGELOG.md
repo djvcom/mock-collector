@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.1](https://github.com/djvcom/mock-collector/compare/v0.1.0...v0.1.1) - 2025-11-23
+
+### Other
+
+- Merge pull request #1 from djvcom/dependabot/github_actions/actions/checkout-6
+
 ### Added
 - Initial release
 - Support for gRPC, HTTP/JSON, and HTTP/Protobuf OTLP protocols
