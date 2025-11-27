@@ -1,5 +1,17 @@
 use mock_collector::{MockServer, Protocol};
 use std::fs;
+use std::path::PathBuf;
+
+fn example_path(filename: &str) -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .unwrap()
+        .parent()
+        .unwrap()
+        .join("opentelemetry-proto-examples")
+        .join("examples")
+        .join(filename)
+}
 
 #[tokio::test]
 async fn test_http_json_logs_with_official_example() {
@@ -11,8 +23,8 @@ async fn test_http_json_logs_with_official_example() {
         .expect("Failed to start server");
 
     // Load official OTLP example
-    let example_json = fs::read_to_string("opentelemetry-proto-examples/examples/logs.json")
-        .expect("Failed to read logs.json example");
+    let example_json =
+        fs::read_to_string(example_path("logs.json")).expect("Failed to read logs.json example");
 
     // Send to server
     let client = reqwest::Client::new();
@@ -69,8 +81,8 @@ async fn test_http_json_traces_with_official_example() {
         .expect("Failed to start server");
 
     // Load official OTLP example
-    let example_json = fs::read_to_string("opentelemetry-proto-examples/examples/trace.json")
-        .expect("Failed to read trace.json example");
+    let example_json =
+        fs::read_to_string(example_path("trace.json")).expect("Failed to read trace.json example");
 
     // Send to server
     let client = reqwest::Client::new();
@@ -127,8 +139,8 @@ async fn test_http_protobuf_logs_with_official_example() {
         .expect("Failed to start server");
 
     // Load and parse JSON example
-    let example_json = fs::read_to_string("opentelemetry-proto-examples/examples/logs.json")
-        .expect("Failed to read logs.json example");
+    let example_json =
+        fs::read_to_string(example_path("logs.json")).expect("Failed to read logs.json example");
 
     let logs_request: opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest =
         serde_json::from_str(&example_json).expect("Failed to parse JSON");
@@ -176,8 +188,8 @@ async fn test_http_protobuf_traces_with_official_example() {
         .expect("Failed to start server");
 
     // Load and parse JSON example
-    let example_json = fs::read_to_string("opentelemetry-proto-examples/examples/trace.json")
-        .expect("Failed to read trace.json example");
+    let example_json =
+        fs::read_to_string(example_path("trace.json")).expect("Failed to read trace.json example");
 
     let trace_request: opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest =
         serde_json::from_str(&example_json).expect("Failed to parse JSON");
@@ -225,10 +237,10 @@ async fn test_grpc_logs_and_traces_simultaneously() {
         .expect("Failed to start server");
 
     // Load examples
-    let logs_json = fs::read_to_string("opentelemetry-proto-examples/examples/logs.json")
-        .expect("Failed to read logs.json");
-    let trace_json = fs::read_to_string("opentelemetry-proto-examples/examples/trace.json")
-        .expect("Failed to read trace.json");
+    let logs_json =
+        fs::read_to_string(example_path("logs.json")).expect("Failed to read logs.json");
+    let trace_json =
+        fs::read_to_string(example_path("trace.json")).expect("Failed to read trace.json");
 
     let logs_request: opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest =
         serde_json::from_str(&logs_json).expect("Failed to parse logs JSON");
@@ -423,7 +435,7 @@ async fn test_http_json_metrics_with_official_example() {
         .expect("Failed to start server");
 
     // Load official OTLP example
-    let example_json = fs::read_to_string("opentelemetry-proto-examples/examples/metrics.json")
+    let example_json = fs::read_to_string(example_path("metrics.json"))
         .expect("Failed to read metrics.json example");
 
     // Send to server
@@ -511,7 +523,7 @@ async fn test_http_protobuf_metrics_with_official_example() {
         .expect("Failed to start server");
 
     // Load and parse JSON example
-    let example_json = fs::read_to_string("opentelemetry-proto-examples/examples/metrics.json")
+    let example_json = fs::read_to_string(example_path("metrics.json"))
         .expect("Failed to read metrics.json example");
 
     let metrics_request: opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest =
@@ -575,12 +587,12 @@ async fn test_grpc_all_signals_simultaneously() {
         .expect("Failed to start server");
 
     // Load examples
-    let logs_json = fs::read_to_string("opentelemetry-proto-examples/examples/logs.json")
-        .expect("Failed to read logs.json");
-    let trace_json = fs::read_to_string("opentelemetry-proto-examples/examples/trace.json")
-        .expect("Failed to read trace.json");
-    let metrics_json = fs::read_to_string("opentelemetry-proto-examples/examples/metrics.json")
-        .expect("Failed to read metrics.json");
+    let logs_json =
+        fs::read_to_string(example_path("logs.json")).expect("Failed to read logs.json");
+    let trace_json =
+        fs::read_to_string(example_path("trace.json")).expect("Failed to read trace.json");
+    let metrics_json =
+        fs::read_to_string(example_path("metrics.json")).expect("Failed to read metrics.json");
 
     let logs_request: opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest =
         serde_json::from_str(&logs_json).expect("Failed to parse logs JSON");
