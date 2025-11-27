@@ -1,0 +1,32 @@
+[package]
+name = "otel-lambda-init"
+version = "0.1.0"
+edition.workspace = true
+authors.workspace = true
+rust-version.workspace = true
+description = "OpenTelemetry SDK initialisation helpers for AWS Lambda"
+license.workspace = true
+repository.workspace = true
+homepage.workspace = true
+keywords = ["opentelemetry", "lambda", "aws", "tracing", "observability"]
+categories = ["development-tools::profiling"]
+publish = false  # Not ready for publishing yet
+
+[dependencies]
+# OpenTelemetry core
+opentelemetry = "0.31.0"
+opentelemetry_sdk = { version = "0.31.0", features = ["logs", "metrics", "rt-tokio", "trace"] }
+opentelemetry-otlp = { version = "0.31.0", features = ["http-proto", "grpc-tonic", "tls", "tls-roots"] }
+
+# Tracing integration
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter", "fmt"] }
+tracing-opentelemetry = "0.32.0"
+
+# Re-export Protocol from mock-collector
+mock-collector = { path = "../mock-collector" }
+
+# Error handling
+thiserror = "2.0.17"
+tonic = "0.14.2"
+opentelemetry-appender-tracing = "0.31.0"

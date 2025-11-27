@@ -10,5 +10,6 @@ git_release_enable = true
 
 [[package]]
 name = "mock-collector"
+path = "crates/mock-collector"
 # Use conventional commits to determine version bumps
 changelog_include = ["feat", "fix", "perf", "refactor", "docs"]
