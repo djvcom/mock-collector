@@ -9,6 +9,7 @@
 //! - **Single Collector**: One collector handles all signals - test logs, traces, and metrics together
 //! - **Multiple Protocol Support**: gRPC, HTTP/Protobuf, and HTTP/JSON
 //! - **Fluent Assertion API**: Easy-to-use builder pattern for test assertions
+//! - **Async Waiting**: Wait for telemetry to arrive with timeout support
 //! - **Severity Level Assertions**: Assert on log severity levels (Debug, Info, Warn, Error, Fatal)
 //! - **Count-Based Assertions**: Assert exact counts, minimums, or maximums
 //! - **Negative Assertions**: Verify logs/spans/metrics don't exist
@@ -61,6 +62,43 @@
 //! }
 //! ```
 //!
+//! # Async Waiting
+//!
+//! When testing async telemetry pipelines, signals often arrive asynchronously after the
+//! operation that generates them completes. The library provides waiting methods to handle
+//! this pattern:
+//!
+//! ```no_run
+//! use mock_collector::MockServer;
+//! use std::time::Duration;
+//!
+//! # #[tokio::main]
+//! # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+//! let server = MockServer::builder().start().await?;
+//!
+//! // Trigger async telemetry export...
+//!
+//! // Wait for telemetry to arrive before asserting
+//! server.wait_for_spans(1, Duration::from_secs(5)).await?;
+//! server.wait_for_logs(2, Duration::from_secs(5)).await?;
+//! server.wait_for_metrics(3, Duration::from_secs(5)).await?;
+//!
+//! // Or use a custom predicate for complex conditions
+//! server.wait_until(
+//!     |c| c.expect_span_with_name("http.request")
+//!         .with_attributes([("http.status_code", 200)])
+//!         .count() >= 1,
+//!     Duration::from_secs(5),
+//! ).await?;
+//!
+//! // Now safe to run assertions
+//! server.with_collector(|collector| {
+//!     collector.expect_span_with_name("http.request").assert_exists();
+//! }).await;
+//! # Ok(())
+//! # }
+//! ```
+//!
 //! # Assertion API
 //!
 //! The library provides assertion methods for logs, traces, and metrics:
@@ -88,6 +126,13 @@
 //! - [`MetricAssertion::assert_count`]: Assert exact number of matches
 //! - [`MetricAssertion::assert_at_least`]: Assert minimum matches
 //! - [`MetricAssertion::assert_at_most`]: Assert maximum matches
+//!
+//! ## Waiting Methods
+//!
+//! - [`ServerHandle::wait_until`]: Wait for a custom predicate to return true
+//! - [`ServerHandle::wait_for_spans`]: Wait for at least N spans to arrive
+//! - [`ServerHandle::wait_for_logs`]: Wait for at least N logs to arrive
+//! - [`ServerHandle::wait_for_metrics`]: Wait for at least N metrics to arrive
 //!
 //! # Examples
 //!

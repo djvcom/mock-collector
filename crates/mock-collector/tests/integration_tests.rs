@@ -1,6 +1,7 @@
-use mock_collector::{MockServer, Protocol};
+use mock_collector::{MockServer, MockServerError, Protocol};
 use std::fs;
 use std::path::PathBuf;
+use std::time::Duration;
 
 fn example_path(filename: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -802,6 +803,340 @@ async fn test_severity_assertions() {
                 .assert_not_exists();
         })
         .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_wait_for_logs() {
+    use opentelemetry_proto::tonic::collector::logs::v1::{
+        ExportLogsServiceRequest, logs_service_client::LogsServiceClient,
+    };
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, any_value};
+    use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let addr = server.addr();
+
+    let send_task = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(100)).await;
+
+        let mut client = LogsServiceClient::connect(format!("http://{}", addr))
+            .await
+            .unwrap();
+
+        let request = ExportLogsServiceRequest {
+            resource_logs: vec![ResourceLogs {
+                resource: None,
+                scope_logs: vec![ScopeLogs {
+                    log_records: vec![
+                        LogRecord {
+                            body: Some(AnyValue {
+                                value: Some(any_value::Value::StringValue("Log one".to_string())),
+                            }),
+                            ..Default::default()
+                        },
+                        LogRecord {
+                            body: Some(AnyValue {
+                                value: Some(any_value::Value::StringValue("Log two".to_string())),
+                            }),
+                            ..Default::default()
+                        },
+                    ],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+
+        client.export(request).await.unwrap();
+    });
+
+    server
+        .wait_for_logs(2, Duration::from_secs(5))
+        .await
+        .expect("Should receive logs before timeout");
+
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.log_count(), 2);
+            collector.expect_log_with_body("Log one").assert_exists();
+            collector.expect_log_with_body("Log two").assert_exists();
+        })
+        .await;
+
+    send_task.await.expect("Send task should complete");
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_wait_for_spans() {
+    use opentelemetry_proto::tonic::collector::trace::v1::{
+        ExportTraceServiceRequest, trace_service_client::TraceServiceClient,
+    };
+    use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let addr = server.addr();
+
+    let send_task = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(50)).await;
+
+        let mut client = TraceServiceClient::connect(format!("http://{}", addr))
+            .await
+            .unwrap();
+
+        let request = ExportTraceServiceRequest {
+            resource_spans: vec![ResourceSpans {
+                resource: None,
+                scope_spans: vec![ScopeSpans {
+                    spans: vec![Span {
+                        name: "test-span".to_string(),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+
+        client.export(request).await.unwrap();
+    });
+
+    server
+        .wait_for_spans(1, Duration::from_secs(5))
+        .await
+        .expect("Should receive span before timeout");
+
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.span_count(), 1);
+            collector.expect_span_with_name("test-span").assert_exists();
+        })
+        .await;
+
+    send_task.await.expect("Send task should complete");
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_wait_for_metrics() {
+    use opentelemetry_proto::tonic::collector::metrics::v1::{
+        ExportMetricsServiceRequest, metrics_service_client::MetricsServiceClient,
+    };
+    use opentelemetry_proto::tonic::metrics::v1::{
+        Gauge, Metric, ResourceMetrics, ScopeMetrics, metric,
+    };
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let addr = server.addr();
+
+    let send_task = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(75)).await;
+
+        let mut client = MetricsServiceClient::connect(format!("http://{}", addr))
+            .await
+            .unwrap();
+
+        let request = ExportMetricsServiceRequest {
+            resource_metrics: vec![ResourceMetrics {
+                resource: None,
+                scope_metrics: vec![ScopeMetrics {
+                    metrics: vec![Metric {
+                        name: "test.metric".to_string(),
+                        data: Some(metric::Data::Gauge(Gauge {
+                            data_points: vec![],
+                        })),
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+
+        client.export(request).await.unwrap();
+    });
+
+    server
+        .wait_for_metrics(1, Duration::from_secs(5))
+        .await
+        .expect("Should receive metric before timeout");
+
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.metric_count(), 1);
+            collector
+                .expect_metric_with_name("test.metric")
+                .assert_exists();
+        })
+        .await;
+
+    send_task.await.expect("Send task should complete");
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_wait_until_with_predicate() {
+    use opentelemetry_proto::tonic::collector::logs::v1::{
+        ExportLogsServiceRequest, logs_service_client::LogsServiceClient,
+    };
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value};
+    use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let addr = server.addr();
+
+    let send_task = tokio::spawn(async move {
+        tokio::time::sleep(Duration::from_millis(80)).await;
+
+        let mut client = LogsServiceClient::connect(format!("http://{}", addr))
+            .await
+            .unwrap();
+
+        let request = ExportLogsServiceRequest {
+            resource_logs: vec![ResourceLogs {
+                resource: None,
+                scope_logs: vec![ScopeLogs {
+                    log_records: vec![LogRecord {
+                        body: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue(
+                                "Special message".to_string(),
+                            )),
+                        }),
+                        attributes: vec![KeyValue {
+                            key: "level".to_string(),
+                            value: Some(AnyValue {
+                                value: Some(any_value::Value::StringValue("critical".to_string())),
+                            }),
+                        }],
+                        ..Default::default()
+                    }],
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+        };
+
+        client.export(request).await.unwrap();
+    });
+
+    server
+        .wait_until(
+            |c| {
+                c.expect_log_with_body("Special message")
+                    .with_attributes([("level", "critical")])
+                    .count()
+                    >= 1
+            },
+            Duration::from_secs(5),
+        )
+        .await
+        .expect("Should find matching log before timeout");
+
+    server
+        .with_collector(|collector| {
+            collector
+                .expect_log_with_body("Special message")
+                .with_attributes([("level", "critical")])
+                .assert_exists();
+        })
+        .await;
+
+    send_task.await.expect("Send task should complete");
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_wait_timeout_returns_error() {
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let result = server.wait_for_logs(1, Duration::from_millis(100)).await;
+
+    assert!(result.is_err());
+    match result {
+        Err(MockServerError::WaitTimeout(duration)) => {
+            assert_eq!(duration, Duration::from_millis(100));
+        }
+        _ => panic!("Expected WaitTimeout error"),
+    }
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_wait_returns_immediately_when_condition_met() {
+    use opentelemetry_proto::tonic::collector::logs::v1::{
+        ExportLogsServiceRequest, logs_service_client::LogsServiceClient,
+    };
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, any_value};
+    use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use std::time::Instant;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let mut client = LogsServiceClient::connect(format!("http://{}", server.addr()))
+        .await
+        .unwrap();
+
+    let request = ExportLogsServiceRequest {
+        resource_logs: vec![ResourceLogs {
+            resource: None,
+            scope_logs: vec![ScopeLogs {
+                log_records: vec![LogRecord {
+                    body: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue("Already here".to_string())),
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    };
+
+    client.export(request).await.unwrap();
+
+    let start = Instant::now();
+    server
+        .wait_for_logs(1, Duration::from_secs(5))
+        .await
+        .expect("Should succeed immediately");
+    let elapsed = start.elapsed();
+
+    assert!(
+        elapsed < Duration::from_millis(100),
+        "wait_for_logs should return immediately when condition is already met, took {:?}",
+        elapsed
+    );
 
     server.shutdown().await.expect("Failed to shutdown");
 }
