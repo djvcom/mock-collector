@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1](https://github.com/djvcom/mock-collector/compare/v0.2.0...v0.2.1) - 2025-11-29
+
+### Added
+
+- add async waiting methods for assertions
+
 ## [0.2.0](https://github.com/djvcom/mock-collector/compare/v0.1.2...v0.2.0) - 2025-11-27
 
 ### Added
