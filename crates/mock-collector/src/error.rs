@@ -25,4 +25,7 @@ pub enum MockServerError {
 
     #[error("Server error: {0}")]
     ServerError(String),
+
+    #[error("Timed out after {0:?} waiting for condition")]
+    WaitTimeout(std::time::Duration),
 }

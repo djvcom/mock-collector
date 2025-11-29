@@ -14,6 +14,7 @@ use opentelemetry_proto::tonic::collector::trace::v1::{
 };
 use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
@@ -453,6 +454,226 @@ impl ServerHandle {
     /// This is useful when using port 0 for OS-assigned ports.
     pub fn addr(&self) -> SocketAddr {
         self.addr
+    }
+
+    /// Waits until a predicate returns `true` or the timeout expires.
+    ///
+    /// This method polls the collector at 50ms intervals, running the predicate
+    /// against the current state. It returns `Ok(())` as soon as the predicate
+    /// returns `true`, or `Err(MockServerError::WaitTimeout)` if the timeout
+    /// is exceeded.
+    ///
+    /// # Arguments
+    ///
+    /// * `predicate` - A function that receives a reference to the collector and
+    ///   returns `true` when the desired condition is met.
+    /// * `timeout` - Maximum duration to wait before returning an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MockServerError::WaitTimeout`] if the timeout expires before
+    /// the predicate returns `true`.
+    ///
+    /// # Examples
+    ///
+    /// Wait for a specific span to arrive:
+    ///
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use mock_collector::MockServer;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let server = MockServer::builder().start().await?;
+    ///
+    /// // ... trigger telemetry export ...
+    ///
+    /// server.wait_until(
+    ///     |c| c.expect_span_with_name("http.request").count() >= 1,
+    ///     Duration::from_secs(5),
+    /// ).await?;
+    ///
+    /// // Now safe to run assertions
+    /// server.with_collector(|c| {
+    ///     c.expect_span_with_name("http.request")
+    ///         .with_attributes([("http.method", "GET")])
+    ///         .assert_exists();
+    /// }).await;
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// Wait for logs with specific attributes:
+    ///
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use mock_collector::MockServer;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let server = MockServer::builder().start().await?;
+    ///
+    /// server.wait_until(
+    ///     |c| c.expect_log_with_body("Request processed")
+    ///         .with_attributes([("status", "success")])
+    ///         .count() >= 1,
+    ///     Duration::from_secs(5),
+    /// ).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn wait_until<F>(
+        &self,
+        predicate: F,
+        timeout: Duration,
+    ) -> Result<(), MockServerError>
+    where
+        F: Fn(&MockCollector) -> bool,
+    {
+        let poll_interval = Duration::from_millis(50);
+        let deadline = Instant::now() + timeout;
+
+        loop {
+            {
+                let collector = self.collector.read().await;
+                if predicate(&collector) {
+                    return Ok(());
+                }
+            }
+
+            if Instant::now() >= deadline {
+                return Err(MockServerError::WaitTimeout(timeout));
+            }
+
+            tokio::time::sleep(poll_interval).await;
+        }
+    }
+
+    /// Waits until at least `count` spans have been collected.
+    ///
+    /// This is a convenience method equivalent to:
+    ///
+    /// ```ignore
+    /// server.wait_until(|c| c.span_count() >= count, timeout).await
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Minimum number of spans to wait for.
+    /// * `timeout` - Maximum duration to wait before returning an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MockServerError::WaitTimeout`] if the timeout expires before
+    /// the required number of spans arrive.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use mock_collector::MockServer;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let server = MockServer::builder().start().await?;
+    ///
+    /// // ... trigger span generation ...
+    ///
+    /// server.wait_for_spans(3, Duration::from_secs(5)).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn wait_for_spans(
+        &self,
+        count: usize,
+        timeout: Duration,
+    ) -> Result<(), MockServerError> {
+        self.wait_until(|c| c.span_count() >= count, timeout).await
+    }
+
+    /// Waits until at least `count` logs have been collected.
+    ///
+    /// This is a convenience method equivalent to:
+    ///
+    /// ```ignore
+    /// server.wait_until(|c| c.log_count() >= count, timeout).await
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Minimum number of logs to wait for.
+    /// * `timeout` - Maximum duration to wait before returning an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MockServerError::WaitTimeout`] if the timeout expires before
+    /// the required number of logs arrive.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use mock_collector::MockServer;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let server = MockServer::builder().start().await?;
+    ///
+    /// // ... trigger log generation ...
+    ///
+    /// server.wait_for_logs(5, Duration::from_secs(5)).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn wait_for_logs(
+        &self,
+        count: usize,
+        timeout: Duration,
+    ) -> Result<(), MockServerError> {
+        self.wait_until(|c| c.log_count() >= count, timeout).await
+    }
+
+    /// Waits until at least `count` metrics have been collected.
+    ///
+    /// This is a convenience method equivalent to:
+    ///
+    /// ```ignore
+    /// server.wait_until(|c| c.metric_count() >= count, timeout).await
+    /// ```
+    ///
+    /// # Arguments
+    ///
+    /// * `count` - Minimum number of metrics to wait for.
+    /// * `timeout` - Maximum duration to wait before returning an error.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`MockServerError::WaitTimeout`] if the timeout expires before
+    /// the required number of metrics arrive.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// use std::time::Duration;
+    /// use mock_collector::MockServer;
+    ///
+    /// # #[tokio::main]
+    /// # async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    /// let server = MockServer::builder().start().await?;
+    ///
+    /// // ... trigger metric generation ...
+    ///
+    /// server.wait_for_metrics(10, Duration::from_secs(5)).await?;
+    /// # Ok(())
+    /// # }
+    /// ```
+    pub async fn wait_for_metrics(
+        &self,
+        count: usize,
+        timeout: Duration,
+    ) -> Result<(), MockServerError> {
+        self.wait_until(|c| c.metric_count() >= count, timeout)
+            .await
     }
 
     /// Gracefully shuts down the server.
