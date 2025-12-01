@@ -19,7 +19,7 @@ exclude = [
 
 [dependencies]
 axum = "0.8.7"
-opentelemetry-otlp = "0.31.0"
+opentelemetry-otlp = { version = "0.31.0", default-features = false, features = ["http-proto"] }
 opentelemetry-proto = "0.31.0"
 prost = "0.14.1"
 serde = { version = "1.0.228", features = ["derive"] }
