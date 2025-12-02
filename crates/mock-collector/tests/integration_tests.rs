@@ -1140,3 +1140,376 @@ async fn test_wait_returns_immediately_when_condition_met() {
 
     server.shutdown().await.expect("Failed to shutdown");
 }
+
+#[tokio::test]
+async fn test_log_with_resource_attributes_grpc() {
+    use opentelemetry_proto::tonic::collector::logs::v1::{
+        ExportLogsServiceRequest, logs_service_client::LogsServiceClient,
+    };
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value};
+    use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use opentelemetry_proto::tonic::resource::v1::Resource;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let mut client = LogsServiceClient::connect(format!("http://{}", server.addr()))
+        .await
+        .expect("Failed to connect");
+
+    let request = ExportLogsServiceRequest {
+        resource_logs: vec![ResourceLogs {
+            resource: Some(Resource {
+                attributes: vec![KeyValue {
+                    key: "service.name".to_string(),
+                    value: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue("unknown_service".to_string())),
+                    }),
+                }],
+                dropped_attributes_count: 0,
+                ..Default::default()
+            }),
+            scope_logs: vec![ScopeLogs {
+                scope: None,
+                log_records: vec![LogRecord {
+                    body: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue("an info log".to_string())),
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    };
+
+    client.export(request).await.expect("Failed to export logs");
+
+    server
+        .with_collector(|c| {
+            assert_eq!(c.log_count(), 1);
+
+            c.expect_log_with_body("an info log")
+                .with_resource_attributes([("service.name", "unknown_service")])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_log_with_resource_attributes_http_json() {
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpJson)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let json_payload = r#"{
+        "resourceLogs": [{
+            "resource": {
+                "attributes": [{
+                    "key": "service.name",
+                    "value": { "stringValue": "unknown_service" }
+                }]
+            },
+            "scopeLogs": [{
+                "logRecords": [{
+                    "body": { "stringValue": "an info log" }
+                }]
+            }]
+        }]
+    }"#;
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("http://{}/v1/logs", server.addr()))
+        .header("Content-Type", "application/json")
+        .body(json_payload)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    server
+        .with_collector(|c| {
+            assert_eq!(c.log_count(), 1);
+
+            c.expect_log_with_body("an info log")
+                .with_resource_attributes([("service.name", "unknown_service")])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_log_with_multiple_resource_attributes() {
+    use opentelemetry_proto::tonic::collector::logs::v1::{
+        ExportLogsServiceRequest, logs_service_client::LogsServiceClient,
+    };
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value};
+    use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use opentelemetry_proto::tonic::resource::v1::Resource;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let mut client = LogsServiceClient::connect(format!("http://{}", server.addr()))
+        .await
+        .expect("Failed to connect");
+
+    let request = ExportLogsServiceRequest {
+        resource_logs: vec![ResourceLogs {
+            resource: Some(Resource {
+                attributes: vec![
+                    KeyValue {
+                        key: "service.name".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue(
+                                "unknown_service".to_string(),
+                            )),
+                        }),
+                    },
+                    KeyValue {
+                        key: "telemetry.sdk.language".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("rust".to_string())),
+                        }),
+                    },
+                    KeyValue {
+                        key: "telemetry.sdk.version".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("0.28.0".to_string())),
+                        }),
+                    },
+                ],
+                dropped_attributes_count: 0,
+                ..Default::default()
+            }),
+            scope_logs: vec![ScopeLogs {
+                scope: None,
+                log_records: vec![LogRecord {
+                    body: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue("an info log".to_string())),
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    };
+
+    client.export(request).await.expect("Failed to export logs");
+
+    server
+        .with_collector(|c| {
+            assert_eq!(c.log_count(), 1);
+
+            c.expect_log_with_body("an info log")
+                .with_resource_attributes([("service.name", "unknown_service")])
+                .assert_exists();
+
+            c.expect_log_with_body("an info log")
+                .with_resource_attributes([
+                    ("service.name", "unknown_service"),
+                    ("telemetry.sdk.language", "rust"),
+                ])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_log_with_resource_attributes_http_binary() {
+    use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value};
+    use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use opentelemetry_proto::tonic::resource::v1::Resource;
+    use prost::Message;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpBinary)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let request = ExportLogsServiceRequest {
+        resource_logs: vec![ResourceLogs {
+            resource: Some(Resource {
+                attributes: vec![
+                    KeyValue {
+                        key: "service.name".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue(
+                                "unknown_service".to_string(),
+                            )),
+                        }),
+                    },
+                    KeyValue {
+                        key: "telemetry.sdk.name".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("opentelemetry".to_string())),
+                        }),
+                    },
+                    KeyValue {
+                        key: "telemetry.sdk.language".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("rust".to_string())),
+                        }),
+                    },
+                    KeyValue {
+                        key: "telemetry.sdk.version".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("0.31.0".to_string())),
+                        }),
+                    },
+                ],
+                dropped_attributes_count: 0,
+                ..Default::default()
+            }),
+            scope_logs: vec![ScopeLogs {
+                scope: None,
+                log_records: vec![LogRecord {
+                    body: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue("an info log".to_string())),
+                    }),
+                    severity_number: 9, // INFO
+                    severity_text: "INFO".to_string(),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    };
+
+    let proto_bytes = request.encode_to_vec();
+
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("http://{}/v1/logs", server.addr()))
+        .header("Content-Type", "application/x-protobuf")
+        .body(proto_bytes)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    server
+        .with_collector(|c| {
+            assert_eq!(c.log_count(), 1);
+
+            c.expect_log_with_body("an info log")
+                .with_resource_attributes([("service.name", "unknown_service")])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_log_resource_attributes_with_non_string_values() {
+    use opentelemetry_proto::tonic::collector::logs::v1::{
+        ExportLogsServiceRequest, logs_service_client::LogsServiceClient,
+    };
+    use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue, any_value};
+    use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
+    use opentelemetry_proto::tonic::resource::v1::Resource;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    let mut client = LogsServiceClient::connect(format!("http://{}", server.addr()))
+        .await
+        .expect("Failed to connect");
+
+    let request = ExportLogsServiceRequest {
+        resource_logs: vec![ResourceLogs {
+            resource: Some(Resource {
+                attributes: vec![
+                    KeyValue {
+                        key: "service.name".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::StringValue("my-service".to_string())),
+                        }),
+                    },
+                    KeyValue {
+                        key: "process.pid".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::IntValue(12345)),
+                        }),
+                    },
+                    KeyValue {
+                        key: "enabled".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::BoolValue(true)),
+                        }),
+                    },
+                    KeyValue {
+                        key: "ratio".to_string(),
+                        value: Some(AnyValue {
+                            value: Some(any_value::Value::DoubleValue(0.5)),
+                        }),
+                    },
+                ],
+                dropped_attributes_count: 0,
+                ..Default::default()
+            }),
+            scope_logs: vec![ScopeLogs {
+                scope: None,
+                log_records: vec![LogRecord {
+                    body: Some(AnyValue {
+                        value: Some(any_value::Value::StringValue("test log".to_string())),
+                    }),
+                    ..Default::default()
+                }],
+                ..Default::default()
+            }],
+            ..Default::default()
+        }],
+    };
+
+    client.export(request).await.expect("Failed to export logs");
+
+    server
+        .with_collector(|c| {
+            assert_eq!(c.log_count(), 1);
+
+            c.expect_log_with_body("test log")
+                .with_resource_attributes([("service.name", "my-service")])
+                .assert_exists();
+
+            c.expect_log_with_body("test log")
+                .with_resource_attributes([("process.pid", 12345)])
+                .assert_exists();
+
+            c.expect_log_with_body("test log")
+                .with_resource_attributes([("enabled", true)])
+                .assert_exists();
+
+            c.expect_log_with_body("test log")
+                .with_resource_attributes([("ratio", 0.5)])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
