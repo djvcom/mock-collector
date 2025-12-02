@@ -43,6 +43,32 @@ jobs:
       - name: Run tests
         run: cargo test --all-features
 
+  msrv:
+    name: MSRV
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          submodules: recursive
+
+      - name: Install MSRV Rust
+        uses: dtolnay/rust-toolchain@1.91.1
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-msrv-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Cache cargo index
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/git
+          key: ${{ runner.os }}-msrv-cargo-index-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check MSRV compatibility
+        run: cargo check --all-features
+
   clippy:
     name: Clippy
     runs-on: ubuntu-latest

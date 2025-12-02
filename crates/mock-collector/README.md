@@ -25,7 +25,7 @@ Add to your `Cargo.toml` (check the badge above for the latest version):
 
 ```toml
 [dev-dependencies]
-mock-collector = "0.1"
+mock-collector = "0.2"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 ```
 
