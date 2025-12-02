@@ -1,11 +1,63 @@
 use opentelemetry_proto::tonic::{
     collector::logs::v1::ExportLogsServiceRequest,
     collector::metrics::v1::ExportMetricsServiceRequest,
-    collector::trace::v1::ExportTraceServiceRequest, common::v1::KeyValue, logs::v1::LogRecord,
-    metrics::v1::Metric, trace::v1::Span,
+    collector::trace::v1::ExportTraceServiceRequest,
+    common::v1::{AnyValue, KeyValue},
+    logs::v1::LogRecord,
+    metrics::v1::Metric,
+    trace::v1::Span,
 };
 use serde_json::Value;
 use std::sync::Arc;
+
+fn format_any_value(value: &Option<AnyValue>) -> String {
+    use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValueInner;
+
+    match value {
+        Some(av) => match &av.value {
+            Some(AnyValueInner::StringValue(s)) => format!("\"{}\"", s),
+            Some(AnyValueInner::IntValue(i)) => i.to_string(),
+            Some(AnyValueInner::DoubleValue(d)) => format!("{:.6}", d),
+            Some(AnyValueInner::BoolValue(b)) => b.to_string(),
+            Some(AnyValueInner::ArrayValue(arr)) => {
+                let items: Vec<String> = arr
+                    .values
+                    .iter()
+                    .map(|v| format_any_value(&Some(v.clone())))
+                    .collect();
+                format!("[{}]", items.join(", "))
+            }
+            Some(AnyValueInner::KvlistValue(kv)) => {
+                let items: Vec<String> = kv
+                    .values
+                    .iter()
+                    .map(|kv| format!("{}={}", kv.key, format_any_value(&kv.value)))
+                    .collect();
+                format!("{{{}}}", items.join(", "))
+            }
+            Some(AnyValueInner::BytesValue(b)) => format!("<bytes: {} bytes>", b.len()),
+            None => "<empty>".to_string(),
+        },
+        None => "<none>".to_string(),
+    }
+}
+
+fn format_attributes(attrs: &[KeyValue], max_items: usize) -> String {
+    let mut output = String::from("{");
+    for (i, attr) in attrs.iter().take(max_items).enumerate() {
+        if i > 0 {
+            output.push_str(", ");
+        }
+        output.push_str(&attr.key);
+        output.push('=');
+        output.push_str(&format_any_value(&attr.value));
+    }
+    if attrs.len() > max_items {
+        output.push_str(&format!(", ... +{}", attrs.len() - max_items));
+    }
+    output.push('}');
+    output
+}
 
 /// A flattened log record with resource and scope attributes copied for easy test assertions.
 ///
@@ -219,48 +271,30 @@ impl MockCollector {
 
     /// Returns a formatted string representation of all logs for debugging.
     pub fn dump(&self) -> String {
-        use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
-
         let mut output = format!("Mock Collector: {} log(s)\n", self.logs.len());
         for (idx, log) in self.logs.iter().enumerate() {
             output.push_str(&format!("\n[{}] ", idx));
-
-            if let Some(body) = &log.log_record.body
-                && let Some(AnyValue::StringValue(s)) = &body.value
-            {
-                output.push_str(&format!("body=\"{}\"", s));
-            }
+            output.push_str(&format!("body={}", format_any_value(&log.log_record.body)));
 
             if !log.log_record.attributes.is_empty() {
-                output.push_str(", attributes={");
-                for (i, attr) in log.log_record.attributes.iter().enumerate() {
-                    if i > 0 {
-                        output.push_str(", ");
-                    }
-                    output.push_str(&format!("{}=", attr.key));
-                    if let Some(val) = &attr.value
-                        && let Some(AnyValue::StringValue(s)) = &val.value
-                    {
-                        output.push_str(&format!("\"{}\"", s));
-                    }
-                }
-                output.push('}');
+                output.push_str(&format!(
+                    ", attributes={}",
+                    format_attributes(&log.log_record.attributes, 5)
+                ));
             }
 
             if !log.resource_attrs.is_empty() {
-                output.push_str(", resource_attrs={");
-                for (i, attr) in log.resource_attrs.iter().enumerate() {
-                    if i > 0 {
-                        output.push_str(", ");
-                    }
-                    output.push_str(&format!("{}=", attr.key));
-                    if let Some(val) = &attr.value
-                        && let Some(AnyValue::StringValue(s)) = &val.value
-                    {
-                        output.push_str(&format!("\"{}\"", s));
-                    }
-                }
-                output.push('}');
+                output.push_str(&format!(
+                    ", resource_attrs={}",
+                    format_attributes(&log.resource_attrs, 5)
+                ));
+            }
+
+            if !log.scope_attrs.is_empty() {
+                output.push_str(&format!(
+                    ", scope_attrs={}",
+                    format_attributes(&log.scope_attrs, 3)
+                ));
             }
         }
         output
@@ -738,8 +772,6 @@ impl<'a> LogAssertion<'a> {
     }
 
     fn build_error_message(&self) -> String {
-        use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
-
         let mut msg = String::from("No logs matched the assertion.\n\n");
         msg.push_str(&format!("Expected:\n  {}\n\n", self.format_criteria()));
         msg.push_str(&format!("Found {} log(s) in collector", self.logs.len()));
@@ -748,28 +780,27 @@ impl<'a> LogAssertion<'a> {
             msg.push_str(":\n");
             for (idx, log) in self.logs.iter().enumerate().take(10) {
                 msg.push_str(&format!("  [{}] ", idx));
-
-                if let Some(body) = &log.log_record.body
-                    && let Some(AnyValue::StringValue(s)) = &body.value
-                {
-                    msg.push_str(&format!("body=\"{}\"", s));
-                }
+                msg.push_str(&format!("body={}", format_any_value(&log.log_record.body)));
 
                 if !log.log_record.attributes.is_empty() {
-                    msg.push_str(", attributes={");
-                    for (i, attr) in log.log_record.attributes.iter().take(3).enumerate() {
-                        if i > 0 {
-                            msg.push_str(", ");
-                        }
-                        msg.push_str(&attr.key);
-                        msg.push('=');
-                        if let Some(val) = &attr.value
-                            && let Some(AnyValue::StringValue(s)) = &val.value
-                        {
-                            msg.push_str(&format!("\"{}\"", s));
-                        }
-                    }
-                    msg.push('}');
+                    msg.push_str(&format!(
+                        ", attributes={}",
+                        format_attributes(&log.log_record.attributes, 3)
+                    ));
+                }
+
+                if !log.resource_attrs.is_empty() {
+                    msg.push_str(&format!(
+                        ", resource_attrs={}",
+                        format_attributes(&log.resource_attrs, 3)
+                    ));
+                }
+
+                if !log.scope_attrs.is_empty() {
+                    msg.push_str(&format!(
+                        ", scope_attrs={}",
+                        format_attributes(&log.scope_attrs, 3)
+                    ));
                 }
 
                 msg.push('\n');
@@ -1166,8 +1197,6 @@ impl<'a> SpanAssertion<'a> {
     }
 
     fn build_error_message(&self) -> String {
-        use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
-
         let mut msg = String::from("No spans matched the assertion.\n\nExpected:\n");
 
         if let Some(ref name) = self.name {
@@ -1222,20 +1251,24 @@ impl<'a> SpanAssertion<'a> {
                 msg.push_str(&format!("  [{}] name=\"{}\"", idx, span.span.name));
 
                 if !span.span.attributes.is_empty() {
-                    msg.push_str(", attributes={");
-                    for (i, attr) in span.span.attributes.iter().take(3).enumerate() {
-                        if i > 0 {
-                            msg.push_str(", ");
-                        }
-                        msg.push_str(&attr.key);
-                        msg.push('=');
-                        if let Some(val) = &attr.value
-                            && let Some(AnyValue::StringValue(s)) = &val.value
-                        {
-                            msg.push_str(&format!("\"{}\"", s));
-                        }
-                    }
-                    msg.push('}');
+                    msg.push_str(&format!(
+                        ", attributes={}",
+                        format_attributes(&span.span.attributes, 3)
+                    ));
+                }
+
+                if !span.resource_attrs.is_empty() {
+                    msg.push_str(&format!(
+                        ", resource_attrs={}",
+                        format_attributes(&span.resource_attrs, 3)
+                    ));
+                }
+
+                if !span.scope_attrs.is_empty() {
+                    msg.push_str(&format!(
+                        ", scope_attrs={}",
+                        format_attributes(&span.scope_attrs, 3)
+                    ));
                 }
 
                 msg.push('\n');
@@ -1542,8 +1575,6 @@ impl<'a> MetricAssertion<'a> {
     }
 
     fn build_error_message(&self) -> String {
-        use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
-
         let mut msg = String::from("No metrics matched the assertion.\n\nExpected:\n");
 
         if let Some(ref name) = self.name {
@@ -1596,25 +1627,22 @@ impl<'a> MetricAssertion<'a> {
                     if let Some(attrs) = sample_attrs
                         && !attrs.is_empty()
                     {
-                        msg.push_str(", attributes={");
-                        for (i, attr) in attrs.iter().take(3).enumerate() {
-                            if i > 0 {
-                                msg.push_str(", ");
-                            }
-                            msg.push_str(&attr.key);
-                            msg.push('=');
-                            if let Some(val) = &attr.value
-                                && let Some(AnyValue::StringValue(s)) = &val.value
-                            {
-                                msg.push_str(&format!("\"{}\"", s));
-                            } else if let Some(val) = &attr.value
-                                && let Some(AnyValue::IntValue(i)) = &val.value
-                            {
-                                msg.push_str(&format!("{}", i));
-                            }
-                        }
-                        msg.push('}');
+                        msg.push_str(&format!(", attributes={}", format_attributes(attrs, 3)));
                     }
+                }
+
+                if !metric.resource_attrs.is_empty() {
+                    msg.push_str(&format!(
+                        ", resource_attrs={}",
+                        format_attributes(&metric.resource_attrs, 3)
+                    ));
+                }
+
+                if !metric.scope_attrs.is_empty() {
+                    msg.push_str(&format!(
+                        ", scope_attrs={}",
+                        format_attributes(&metric.scope_attrs, 3)
+                    ));
                 }
 
                 msg.push('\n');
@@ -1632,6 +1660,142 @@ impl<'a> MetricAssertion<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use opentelemetry_proto::tonic::common::v1::{ArrayValue, KeyValueList, any_value};
+
+    fn make_any_value(inner: any_value::Value) -> Option<AnyValue> {
+        Some(AnyValue { value: Some(inner) })
+    }
+
+    #[test]
+    fn test_format_any_value_string() {
+        let value = make_any_value(any_value::Value::StringValue("hello".to_string()));
+        assert_eq!(format_any_value(&value), "\"hello\"");
+    }
+
+    #[test]
+    fn test_format_any_value_int() {
+        let value = make_any_value(any_value::Value::IntValue(42));
+        assert_eq!(format_any_value(&value), "42");
+    }
+
+    #[test]
+    fn test_format_any_value_double() {
+        let value = make_any_value(any_value::Value::DoubleValue(1.23456));
+        assert_eq!(format_any_value(&value), "1.234560");
+    }
+
+    #[test]
+    fn test_format_any_value_bool_true() {
+        let value = make_any_value(any_value::Value::BoolValue(true));
+        assert_eq!(format_any_value(&value), "true");
+    }
+
+    #[test]
+    fn test_format_any_value_bool_false() {
+        let value = make_any_value(any_value::Value::BoolValue(false));
+        assert_eq!(format_any_value(&value), "false");
+    }
+
+    #[test]
+    fn test_format_any_value_array() {
+        let value = make_any_value(any_value::Value::ArrayValue(ArrayValue {
+            values: vec![
+                AnyValue {
+                    value: Some(any_value::Value::StringValue("a".to_string())),
+                },
+                AnyValue {
+                    value: Some(any_value::Value::IntValue(1)),
+                },
+            ],
+        }));
+        assert_eq!(format_any_value(&value), "[\"a\", 1]");
+    }
+
+    #[test]
+    fn test_format_any_value_kvlist() {
+        let value = make_any_value(any_value::Value::KvlistValue(KeyValueList {
+            values: vec![KeyValue {
+                key: "nested".to_string(),
+                value: Some(AnyValue {
+                    value: Some(any_value::Value::StringValue("value".to_string())),
+                }),
+            }],
+        }));
+        assert_eq!(format_any_value(&value), "{nested=\"value\"}");
+    }
+
+    #[test]
+    fn test_format_any_value_bytes() {
+        let value = make_any_value(any_value::Value::BytesValue(vec![1, 2, 3, 4, 5]));
+        assert_eq!(format_any_value(&value), "<bytes: 5 bytes>");
+    }
+
+    #[test]
+    fn test_format_any_value_none() {
+        assert_eq!(format_any_value(&None), "<none>");
+    }
+
+    #[test]
+    fn test_format_any_value_empty_inner() {
+        let value = Some(AnyValue { value: None });
+        assert_eq!(format_any_value(&value), "<empty>");
+    }
+
+    #[test]
+    fn test_format_attributes_single() {
+        let attrs = vec![KeyValue {
+            key: "service.name".to_string(),
+            value: make_any_value(any_value::Value::StringValue("my-service".to_string())),
+        }];
+        assert_eq!(
+            format_attributes(&attrs, 5),
+            "{service.name=\"my-service\"}"
+        );
+    }
+
+    #[test]
+    fn test_format_attributes_multiple() {
+        let attrs = vec![
+            KeyValue {
+                key: "key1".to_string(),
+                value: make_any_value(any_value::Value::StringValue("val1".to_string())),
+            },
+            KeyValue {
+                key: "key2".to_string(),
+                value: make_any_value(any_value::Value::IntValue(42)),
+            },
+        ];
+        assert_eq!(format_attributes(&attrs, 5), "{key1=\"val1\", key2=42}");
+    }
+
+    #[test]
+    fn test_format_attributes_truncated() {
+        let attrs = vec![
+            KeyValue {
+                key: "a".to_string(),
+                value: make_any_value(any_value::Value::IntValue(1)),
+            },
+            KeyValue {
+                key: "b".to_string(),
+                value: make_any_value(any_value::Value::IntValue(2)),
+            },
+            KeyValue {
+                key: "c".to_string(),
+                value: make_any_value(any_value::Value::IntValue(3)),
+            },
+            KeyValue {
+                key: "d".to_string(),
+                value: make_any_value(any_value::Value::IntValue(4)),
+            },
+        ];
+        assert_eq!(format_attributes(&attrs, 2), "{a=1, b=2, ... +2}");
+    }
+
+    #[test]
+    fn test_format_attributes_empty() {
+        let attrs: Vec<KeyValue> = vec![];
+        assert_eq!(format_attributes(&attrs, 5), "{}");
+    }
 
     #[test]
     #[should_panic(expected = "No logs matched the assertion")]
