@@ -526,6 +526,9 @@ impl<'a> LogAssertion<'a> {
     }
 
     /// Adds log attribute criteria to the assertion.
+    ///
+    /// All attributes must have the same value type. For mixed types, use
+    /// [`with_attribute`](Self::with_attribute) instead.
     #[must_use]
     pub fn with_attributes<I, K, V>(mut self, attributes: I) -> Self
     where
@@ -542,7 +545,34 @@ impl<'a> LogAssertion<'a> {
         self
     }
 
+    /// Adds a single log attribute criterion to the assertion.
+    ///
+    /// This method can be chained to add multiple attributes of different types:
+    ///
+    /// ```ignore
+    /// collector
+    ///     .expect_log_with_body("request processed")
+    ///     .with_attribute("http.status_code", 200)
+    ///     .with_attribute("http.method", "GET")
+    ///     .with_attribute("success", true)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
     /// Adds resource attribute criteria to the assertion.
+    ///
+    /// All attributes must have the same value type. For mixed types, use
+    /// [`with_resource_attribute`](Self::with_resource_attribute) instead.
     #[must_use]
     pub fn with_resource_attributes<I, K, V>(mut self, resource_attributes: I) -> Self
     where
@@ -559,7 +589,23 @@ impl<'a> LogAssertion<'a> {
         self
     }
 
+    /// Adds a single resource attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_resource_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.resource_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
     /// Adds scope attribute criteria to the assertion.
+    ///
+    /// All attributes must have the same value type. For mixed types, use
+    /// [`with_scope_attribute`](Self::with_scope_attribute) instead.
     #[must_use]
     pub fn with_scope_attributes<I, K, V>(mut self, scope_attributes: I) -> Self
     where
@@ -573,6 +619,19 @@ impl<'a> LogAssertion<'a> {
                 .map(|(k, v)| (k.into(), v.into()))
                 .collect(),
         );
+        self
+    }
+
+    /// Adds a single scope attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_scope_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.scope_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
         self
     }
 
@@ -927,6 +986,9 @@ impl<'a> SpanAssertion<'a> {
     }
 
     /// Adds span attribute assertions to the criteria.
+    ///
+    /// All attributes must have the same value type. For mixed types, use
+    /// [`with_attribute`](Self::with_attribute) instead.
     #[must_use]
     pub fn with_attributes<I, K, V>(mut self, attributes: I) -> Self
     where
@@ -942,7 +1004,25 @@ impl<'a> SpanAssertion<'a> {
         self
     }
 
+    /// Adds a single span attribute criterion to the assertion.
+    ///
+    /// This method can be chained to add multiple attributes of different types.
+    #[must_use]
+    pub fn with_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
     /// Adds resource attribute assertions to the criteria.
+    ///
+    /// All attributes must have the same value type. For mixed types, use
+    /// [`with_resource_attribute`](Self::with_resource_attribute) instead.
     #[must_use]
     pub fn with_resource_attributes<I, K, V>(mut self, attributes: I) -> Self
     where
@@ -958,7 +1038,23 @@ impl<'a> SpanAssertion<'a> {
         self
     }
 
+    /// Adds a single resource attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_resource_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.resource_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
     /// Adds scope attribute assertions to the criteria.
+    ///
+    /// All attributes must have the same value type. For mixed types, use
+    /// [`with_scope_attribute`](Self::with_scope_attribute) instead.
     #[must_use]
     pub fn with_scope_attributes<I, K, V>(mut self, attributes: I) -> Self
     where
@@ -971,6 +1067,19 @@ impl<'a> SpanAssertion<'a> {
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
         self.scope_attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single scope attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_scope_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.scope_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
         self
     }
 
@@ -1390,6 +1499,9 @@ impl<'a> MetricAssertion<'a> {
     }
 
     /// Adds metric attribute assertions to the criteria.
+    ///
+    /// All attributes must have the same value type. For mixed types, use
+    /// [`with_attribute`](Self::with_attribute) instead.
     #[must_use]
     pub fn with_attributes<I, K, V>(mut self, attributes: I) -> Self
     where
@@ -1405,7 +1517,25 @@ impl<'a> MetricAssertion<'a> {
         self
     }
 
+    /// Adds a single metric attribute criterion to the assertion.
+    ///
+    /// This method can be chained to add multiple attributes of different types.
+    #[must_use]
+    pub fn with_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
     /// Adds resource attribute assertions to the criteria.
+    ///
+    /// All attributes must have the same value type. For mixed types, use
+    /// [`with_resource_attribute`](Self::with_resource_attribute) instead.
     #[must_use]
     pub fn with_resource_attributes<I, K, V>(mut self, resource_attributes: I) -> Self
     where
@@ -1421,7 +1551,23 @@ impl<'a> MetricAssertion<'a> {
         self
     }
 
+    /// Adds a single resource attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_resource_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.resource_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
     /// Adds scope attribute assertions to the criteria.
+    ///
+    /// All attributes must have the same value type. For mixed types, use
+    /// [`with_scope_attribute`](Self::with_scope_attribute) instead.
     #[must_use]
     pub fn with_scope_attributes<I, K, V>(mut self, scope_attributes: I) -> Self
     where
@@ -1434,6 +1580,19 @@ impl<'a> MetricAssertion<'a> {
             .map(|(k, v)| (k.into(), v.into()))
             .collect();
         self.scope_attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single scope attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_scope_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.scope_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
         self
     }
 
@@ -1817,5 +1976,83 @@ mod tests {
     fn test_default() {
         let mc = MockCollector::default();
         assert_eq!(mc.log_count(), 0);
+    }
+
+    #[test]
+    fn test_with_attribute_accepts_string() {
+        let mc = MockCollector::new();
+        let _assertion = mc
+            .expect_log_with_body("test")
+            .with_attribute("key", "value");
+    }
+
+    #[test]
+    fn test_with_attribute_accepts_int() {
+        let mc = MockCollector::new();
+        let _assertion = mc.expect_log_with_body("test").with_attribute("count", 42);
+    }
+
+    #[test]
+    fn test_with_attribute_accepts_bool() {
+        let mc = MockCollector::new();
+        let _assertion = mc
+            .expect_log_with_body("test")
+            .with_attribute("enabled", true);
+    }
+
+    #[test]
+    fn test_with_attribute_accepts_float() {
+        let mc = MockCollector::new();
+        let _assertion = mc.expect_log_with_body("test").with_attribute("ratio", 0.5);
+    }
+
+    #[test]
+    fn test_with_attribute_chaining_mixed_types() {
+        let mc = MockCollector::new();
+        let _assertion = mc
+            .expect_log_with_body("test")
+            .with_attribute("http.method", "GET")
+            .with_attribute("http.status_code", 200)
+            .with_attribute("success", true)
+            .with_attribute("duration_ms", 1.5);
+    }
+
+    #[test]
+    fn test_with_resource_attribute_mixed_types() {
+        let mc = MockCollector::new();
+        let _assertion = mc
+            .expect_log_with_body("test")
+            .with_resource_attribute("service.name", "my-service")
+            .with_resource_attribute("service.version", 1)
+            .with_resource_attribute("service.active", true);
+    }
+
+    #[test]
+    fn test_with_scope_attribute_mixed_types() {
+        let mc = MockCollector::new();
+        let _assertion = mc
+            .expect_log_with_body("test")
+            .with_scope_attribute("scope.name", "test-scope")
+            .with_scope_attribute("scope.version", 2);
+    }
+
+    #[test]
+    fn test_span_with_attribute_mixed_types() {
+        let mc = MockCollector::new();
+        let _assertion = mc
+            .expect_span_with_name("test-span")
+            .with_attribute("http.method", "POST")
+            .with_attribute("http.status_code", 201)
+            .with_attribute("retry", false);
+    }
+
+    #[test]
+    fn test_metric_with_attribute_mixed_types() {
+        let mc = MockCollector::new();
+        let _assertion = mc
+            .expect_metric_with_name("request_count")
+            .with_attribute("endpoint", "/api/v1")
+            .with_attribute("status", 200)
+            .with_attribute("cached", true);
     }
 }
