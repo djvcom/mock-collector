@@ -2003,9 +2003,7 @@ mod tests {
     #[test]
     fn test_with_attribute_accepts_float() {
         let mc = MockCollector::new();
-        let _assertion = mc
-            .expect_log_with_body("test")
-            .with_attribute("ratio", 0.5);
+        let _assertion = mc.expect_log_with_body("test").with_attribute("ratio", 0.5);
     }
 
     #[test]
