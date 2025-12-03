@@ -52,7 +52,7 @@ jobs:
           submodules: recursive
 
       - name: Install MSRV Rust
-        uses: dtolnay/rust-toolchain@1.91.1
+        uses: dtolnay/rust-toolchain@1.100.0
 
       - name: Cache cargo registry
         uses: actions/cache@v4
