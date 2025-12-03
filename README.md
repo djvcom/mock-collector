@@ -26,7 +26,7 @@ A mock OpenTelemetry OTLP collector server for testing applications that export 
 
 ### 📦 [otel-lambda-init](crates/otel-lambda-init)
 
-[![Documentation](https://docs.rs/otel-lambda-init/badge.svg)](https://docs.rs/otel-lambda-init) *(coming soon)*
+[![Documentation](https://docs.rs/otel-lambda-init/badge.svg)](https://docs.rs/otel-lambda-init) *(not yet published)*
 
 OpenTelemetry SDK initialisation helpers for AWS Lambda functions.
 
@@ -44,7 +44,7 @@ OpenTelemetry SDK initialisation helpers for AWS Lambda functions.
 
 ```toml
 [dev-dependencies]
-mock-collector = "0.1"
+mock-collector = "0.2"
 ```
 
 ```rust
