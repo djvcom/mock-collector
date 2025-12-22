@@ -8,6 +8,7 @@ on:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   trigger-release:
@@ -40,10 +41,28 @@ jobs:
             echo "has_updates=false" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Create release trigger commit
+      - name: Create release trigger PR
         if: steps.check.outputs.has_updates == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          BRANCH="monthly-deps-release-$(date +%Y%m)"
+
+          # Check if branch/PR already exists
+          if gh pr list --head "$BRANCH" --state open | grep -q .; then
+            echo "PR already exists for this month, skipping"
+            exit 0
+          fi
+
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          git checkout -b "$BRANCH"
           git commit --allow-empty -m "fix: monthly dependency update release"
-          git push
+          git push -u origin "$BRANCH"
+
+          gh pr create \
+            --title "fix: monthly dependency update release" \
+            --body "Automated monthly release to publish accumulated dependency updates." \
+            --base main \
+            --head "$BRANCH"
