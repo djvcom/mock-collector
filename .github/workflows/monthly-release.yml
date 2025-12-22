@@ -1,0 +1,49 @@
+name: Monthly Release Check
+
+on:
+  schedule:
+    # Run at 09:00 UTC on the first of each month
+    - cron: "0 9 1 * *"
+  workflow_dispatch: # Allow manual trigger
+
+permissions:
+  contents: write
+
+jobs:
+  trigger-release:
+    name: Trigger release if deps updated
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Check for dependency updates since last tag
+        id: check
+        run: |
+          LAST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -z "$LAST_TAG" ]; then
+            echo "No tags found, skipping"
+            echo "has_updates=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Check for chore(deps) commits since last tag
+          DEPS_COMMITS=$(git log "$LAST_TAG"..HEAD --oneline --grep="chore(deps)" | wc -l)
+
+          if [ "$DEPS_COMMITS" -gt 0 ]; then
+            echo "Found $DEPS_COMMITS dependency update(s) since $LAST_TAG"
+            echo "has_updates=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "No dependency updates since $LAST_TAG"
+            echo "has_updates=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create release trigger commit
+        if: steps.check.outputs.has_updates == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty -m "fix: monthly dependency update release"
+          git push
