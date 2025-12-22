@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6](https://github.com/djvcom/mock-collector/compare/v0.2.5...v0.2.6) - 2025-12-22
+
+### Other
+
+- *(deps)* bump the minor-and-patch group with 3 updates ([#26](https://github.com/djvcom/mock-collector/pull/26))
+- *(deps)* bump tracing in the minor-and-patch group ([#25](https://github.com/djvcom/mock-collector/pull/25))
+- *(deps)* bump reqwest in the minor-and-patch group ([#24](https://github.com/djvcom/mock-collector/pull/24))
+- *(deps)* bump reqwest in the minor-and-patch group ([#23](https://github.com/djvcom/mock-collector/pull/23))
+
 ## [0.2.5](https://github.com/djvcom/mock-collector/compare/v0.2.4...v0.2.5) - 2025-12-03
 
 ### Added
