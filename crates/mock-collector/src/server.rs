@@ -18,6 +18,7 @@ use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
 use tonic::{Request, Response, Status};
+use tower_http::decompression::RequestDecompressionLayer;
 
 use crate::collector::MockCollector;
 use crate::error::MockServerError;
@@ -276,6 +277,7 @@ impl MockServer {
             .route("/v1/logs", post(handle_http_logs))
             .route("/v1/traces", post(handle_http_traces))
             .route("/v1/metrics", post(handle_http_metrics))
+            .layer(RequestDecompressionLayer::new())
             .with_state(HttpServerState {
                 collector: collector.clone(),
                 protocol,

@@ -1513,3 +1513,200 @@ async fn test_log_resource_attributes_with_non_string_values() {
 
     server.shutdown().await.expect("Failed to shutdown");
 }
+
+// ============================================================================
+// Compression Tests
+// ============================================================================
+
+#[tokio::test]
+async fn test_http_json_logs_with_gzip_compression() {
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use std::io::Write;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpJson)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load official OTLP example
+    let example_json =
+        fs::read_to_string(example_path("logs.json")).expect("Failed to read logs.json example");
+
+    // Compress with gzip
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(example_json.as_bytes())
+        .expect("Failed to write to gzip encoder");
+    let compressed = encoder.finish().expect("Failed to finish gzip encoding");
+
+    // Send compressed request
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("http://{}/v1/logs", server.addr()))
+        .header("Content-Type", "application/json")
+        .header("Content-Encoding", "gzip")
+        .body(compressed)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    // Verify the log was correctly decompressed and parsed
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.log_count(), 1);
+            collector
+                .expect_log_with_body("Example log record")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_http_protobuf_traces_with_gzip_compression() {
+    use flate2::Compression;
+    use flate2::write::GzEncoder;
+    use prost::Message;
+    use std::io::Write;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpBinary)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load and parse JSON example, then convert to protobuf
+    let example_json =
+        fs::read_to_string(example_path("trace.json")).expect("Failed to read trace.json example");
+    let trace_request: opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest =
+        serde_json::from_str(&example_json).expect("Failed to parse JSON");
+    let proto_bytes = trace_request.encode_to_vec();
+
+    // Compress with gzip
+    let mut encoder = GzEncoder::new(Vec::new(), Compression::default());
+    encoder
+        .write_all(&proto_bytes)
+        .expect("Failed to write to gzip encoder");
+    let compressed = encoder.finish().expect("Failed to finish gzip encoding");
+
+    // Send compressed request
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("http://{}/v1/traces", server.addr()))
+        .header("Content-Type", "application/x-protobuf")
+        .header("Content-Encoding", "gzip")
+        .body(compressed)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    // Verify the trace was correctly decompressed and parsed
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.span_count(), 1);
+            collector
+                .expect_span_with_name("I'm a server span")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_http_protobuf_metrics_with_zstd_compression() {
+    use prost::Message;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpBinary)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load and parse JSON example, then convert to protobuf
+    let example_json = fs::read_to_string(example_path("metrics.json"))
+        .expect("Failed to read metrics.json example");
+    let metrics_request: opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest =
+        serde_json::from_str(&example_json).expect("Failed to parse JSON");
+    let proto_bytes = metrics_request.encode_to_vec();
+
+    // Compress with zstd
+    let compressed = zstd::encode_all(&proto_bytes[..], 3).expect("Failed to compress with zstd");
+
+    // Send compressed request
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("http://{}/v1/metrics", server.addr()))
+        .header("Content-Type", "application/x-protobuf")
+        .header("Content-Encoding", "zstd")
+        .body(compressed)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    // Verify the metrics were correctly decompressed and parsed
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.metric_count(), 4);
+            collector
+                .expect_metric_with_name("my.counter")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_http_json_logs_with_zstd_compression() {
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpJson)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load official OTLP example
+    let example_json =
+        fs::read_to_string(example_path("logs.json")).expect("Failed to read logs.json example");
+
+    // Compress with zstd
+    let compressed =
+        zstd::encode_all(example_json.as_bytes(), 3).expect("Failed to compress with zstd");
+
+    // Send compressed request
+    let client = reqwest::Client::new();
+    let response = client
+        .post(format!("http://{}/v1/logs", server.addr()))
+        .header("Content-Type", "application/json")
+        .header("Content-Encoding", "zstd")
+        .body(compressed)
+        .send()
+        .await
+        .expect("Failed to send request");
+
+    assert_eq!(response.status(), 200);
+
+    // Verify the log was correctly decompressed and parsed
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.log_count(), 1);
+            collector
+                .expect_log_with_body("Example log record")
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
