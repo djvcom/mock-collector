@@ -394,54 +394,32 @@ let log_count = collector.read().await.log_count();
 
 ## Examples
 
-The `examples/` directory contains complete working examples demonstrating various features:
+The `examples/` directory contains complete working examples:
 
-- **[basic_grpc.rs](examples/basic_grpc.rs)** - Getting started with gRPC protocol
-  - Starting a gRPC server
-  - Sending log records
-  - Basic assertion patterns
-  - Graceful shutdown
+- **[basic_grpc.rs](examples/basic_grpc.rs)** - Getting started with gRPC
+  - Starting a server and sending logs
+  - Using `wait_for_*` methods for async data
+  - Basic assertion patterns and graceful shutdown
 
-- **[http_protocols.rs](examples/http_protocols.rs)** - HTTP/JSON and HTTP/Protobuf protocols
-  - Using HTTP/JSON endpoint
-  - Using HTTP/Protobuf endpoint
-  - Testing logs and traces
-  - Protocol comparison
+- **[http_protocols.rs](examples/http_protocols.rs)** - HTTP/JSON and HTTP/Protobuf
+  - Using HTTP endpoints (`/v1/logs`, `/v1/traces`, `/v1/metrics`)
+  - Content-Type handling for JSON vs Protobuf
 
-- **[metrics.rs](examples/metrics.rs)** - Testing metrics collection
+- **[metrics.rs](examples/metrics.rs)** - Metrics collection
   - Sending metrics via gRPC
   - Asserting on metric names and attributes
-  - All metric types (Sum, Gauge, Histogram)
-  - Metric data point matching
 
-- **[severity_assertions.rs](examples/severity_assertions.rs)** - Testing log severity levels
-  - Asserting on log severity (Debug, Info, Warn, Error, Fatal)
-  - Using SeverityNumber enum
-  - Combining severity with other criteria
-  - Counting logs by severity level
-
-- **[shared_collector.rs](examples/shared_collector.rs)** - Sharing collectors between servers
-  - Using a shared collector Arc
-  - Running multiple servers (gRPC and HTTP)
-  - Direct collector access patterns
-
-- **[assertion_patterns.rs](examples/assertion_patterns.rs)** - Advanced assertion techniques
+- **[assertion_patterns.rs](examples/assertion_patterns.rs)** - Comprehensive assertion API
   - Count assertions (`assert_count`, `assert_at_least`, `assert_at_most`)
   - Negative assertions (`assert_not_exists`)
-  - Combining multiple criteria
-  - Testing all three signals (logs, traces, metrics)
+  - Severity level filtering
+  - Using `dump()` for debugging
+  - Event assertions on spans
 
-- **[debugging.rs](examples/debugging.rs)** - Debugging failed assertions
-  - Using `dump()` to inspect collected data
-  - Using `count()` and `get_all()` for inspection
-  - Understanding assertion failures
-  - Troubleshooting tips
-
-Run any example with:
+Run examples with:
 ```bash
-cargo run --example basic_grpc
-cargo run --example metrics
-# etc.
+just example basic_grpc
+# or: cargo run --example basic_grpc
 ```
 
 ## Comparison with fake-opentelemetry-collector
@@ -457,6 +435,25 @@ This library was inspired by `fake-opentelemetry-collector` but adds:
 - **Better Error Messages**: Detailed panic messages showing what was expected vs what was found
 - **Arc-Optimised Storage**: Efficient memory usage for resource/scope attributes
 - **Builder Pattern**: Simple defaults with `MockServer::builder().start()` or full control
+
+## Development
+
+A Nix flake provides a development shell with all required tools:
+
+```bash
+nix develop
+```
+
+Common tasks are available via [just](https://github.com/casey/just):
+
+```bash
+just          # List all commands
+just check    # Run tests, clippy, and format check
+just test     # Run tests
+just clippy   # Run clippy
+just fmt      # Format code
+just doc-open # Build and open documentation
+```
 
 ## License
 
