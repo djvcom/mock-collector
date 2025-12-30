@@ -1710,3 +1710,147 @@ async fn test_http_json_logs_with_zstd_compression() {
 
     server.shutdown().await.expect("Failed to shutdown");
 }
+
+#[tokio::test]
+async fn test_grpc_logs_with_gzip_compression() {
+    use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
+    use opentelemetry_proto::tonic::collector::logs::v1::logs_service_client::LogsServiceClient;
+    use tonic::codec::CompressionEncoding;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load official OTLP example
+    let example_json =
+        fs::read_to_string(example_path("logs.json")).expect("Failed to read logs.json example");
+    let logs_request: ExportLogsServiceRequest =
+        serde_json::from_str(&example_json).expect("Failed to parse JSON");
+
+    // Create client with gzip compression enabled
+    let channel = tonic::transport::Channel::from_shared(format!("http://{}", server.addr()))
+        .expect("Failed to create channel")
+        .connect()
+        .await
+        .expect("Failed to connect");
+
+    let mut client = LogsServiceClient::new(channel).send_compressed(CompressionEncoding::Gzip);
+
+    // Send compressed request
+    let response = client
+        .export(logs_request)
+        .await
+        .expect("Failed to export logs");
+    assert!(response.into_inner().partial_success.is_none());
+
+    // Verify the log was correctly decompressed and parsed
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.log_count(), 1);
+            collector
+                .expect_log_with_body("Example log record")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_grpc_traces_with_zstd_compression() {
+    use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
+    use opentelemetry_proto::tonic::collector::trace::v1::trace_service_client::TraceServiceClient;
+    use tonic::codec::CompressionEncoding;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load official OTLP example
+    let example_json =
+        fs::read_to_string(example_path("trace.json")).expect("Failed to read trace.json example");
+    let trace_request: ExportTraceServiceRequest =
+        serde_json::from_str(&example_json).expect("Failed to parse JSON");
+
+    // Create client with zstd compression enabled
+    let channel = tonic::transport::Channel::from_shared(format!("http://{}", server.addr()))
+        .expect("Failed to create channel")
+        .connect()
+        .await
+        .expect("Failed to connect");
+
+    let mut client = TraceServiceClient::new(channel).send_compressed(CompressionEncoding::Zstd);
+
+    // Send compressed request
+    let response = client
+        .export(trace_request)
+        .await
+        .expect("Failed to export traces");
+    assert!(response.into_inner().partial_success.is_none());
+
+    // Verify the trace was correctly decompressed and parsed
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.span_count(), 1);
+            collector
+                .expect_span_with_name("I'm a server span")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}
+
+#[tokio::test]
+async fn test_grpc_metrics_with_gzip_compression() {
+    use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
+    use opentelemetry_proto::tonic::collector::metrics::v1::metrics_service_client::MetricsServiceClient;
+    use tonic::codec::CompressionEncoding;
+
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .start()
+        .await
+        .expect("Failed to start server");
+
+    // Load official OTLP example
+    let example_json = fs::read_to_string(example_path("metrics.json"))
+        .expect("Failed to read metrics.json example");
+    let metrics_request: ExportMetricsServiceRequest =
+        serde_json::from_str(&example_json).expect("Failed to parse JSON");
+
+    // Create client with gzip compression enabled
+    let channel = tonic::transport::Channel::from_shared(format!("http://{}", server.addr()))
+        .expect("Failed to create channel")
+        .connect()
+        .await
+        .expect("Failed to connect");
+
+    let mut client = MetricsServiceClient::new(channel).send_compressed(CompressionEncoding::Gzip);
+
+    // Send compressed request
+    let response = client
+        .export(metrics_request)
+        .await
+        .expect("Failed to export metrics");
+    assert!(response.into_inner().partial_success.is_none());
+
+    // Verify the metrics were correctly decompressed and parsed
+    server
+        .with_collector(|collector| {
+            assert_eq!(collector.metric_count(), 4);
+            collector
+                .expect_metric_with_name("my.counter")
+                .with_resource_attributes([("service.name", "my.service")])
+                .assert_exists();
+        })
+        .await;
+
+    server.shutdown().await.expect("Failed to shutdown");
+}

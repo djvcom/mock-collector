@@ -17,7 +17,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 use tokio::net::TcpListener;
 use tokio::sync::RwLock;
-use tonic::{Request, Response, Status};
+use tonic::{Request, Response, Status, codec::CompressionEncoding};
 use tower_http::decompression::RequestDecompressionLayer;
 
 use crate::collector::MockCollector;
@@ -241,9 +241,21 @@ impl MockServer {
 
         let server_task = tokio::spawn(async move {
             tonic::transport::Server::builder()
-                .add_service(LogsServiceServer::new(logs_service))
-                .add_service(TraceServiceServer::new(trace_service))
-                .add_service(MetricsServiceServer::new(metrics_service))
+                .add_service(
+                    LogsServiceServer::new(logs_service)
+                        .accept_compressed(CompressionEncoding::Gzip)
+                        .accept_compressed(CompressionEncoding::Zstd),
+                )
+                .add_service(
+                    TraceServiceServer::new(trace_service)
+                        .accept_compressed(CompressionEncoding::Gzip)
+                        .accept_compressed(CompressionEncoding::Zstd),
+                )
+                .add_service(
+                    MetricsServiceServer::new(metrics_service)
+                        .accept_compressed(CompressionEncoding::Gzip)
+                        .accept_compressed(CompressionEncoding::Zstd),
+                )
                 .serve_with_incoming_shutdown(
                     tokio_stream::wrappers::TcpListenerStream::new(listener),
                     async {
