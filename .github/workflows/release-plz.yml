@@ -33,6 +33,7 @@ jobs:
     name: Publish Release
     runs-on: ubuntu-latest
     environment: prod
+    if: "github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore: release')"
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
