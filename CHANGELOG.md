@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.7](https://github.com/djvcom/mock-collector/compare/v0.2.6...v0.2.7) - 2025-12-30
+
+### Bug Fixes
+
+- correct release-plz changelog configuration
+
+### Features
+
+- *(grpc)* add gzip and zstd decompression support
+- *(http)* add gzip and zstd decompression support
+
+### Refactoring
+
+- convert workspace to single crate
+
 ## [0.2.6](https://github.com/djvcom/mock-collector/compare/v0.2.5...v0.2.6) - 2025-12-22
 
 ### Other
