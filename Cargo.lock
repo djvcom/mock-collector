@@ -720,7 +720,7 @@ dependencies = [
 
 [[package]]
 name = "mock-collector"
-version = "0.2.6"
+version = "0.2.7"
 dependencies = [
  "axum",
  "flate2",
