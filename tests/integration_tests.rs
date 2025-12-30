@@ -5,10 +5,6 @@ use std::time::Duration;
 
 fn example_path(filename: &str) -> PathBuf {
     PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .unwrap()
-        .parent()
-        .unwrap()
         .join("opentelemetry-proto-examples")
         .join("examples")
         .join(filename)

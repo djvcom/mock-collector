@@ -5,7 +5,7 @@
 //!
 //! Run with: `cargo run --example assertion_patterns`
 
-use mock_collector::{MockServer, Protocol};
+use mock_collector::{MockServer, Protocol, SeverityNumber};
 use opentelemetry_proto::tonic::collector::logs::v1::{
     ExportLogsServiceRequest, logs_service_client::LogsServiceClient,
 };
@@ -66,6 +66,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "Request received".to_string(),
                                 )),
                             }),
+                            severity_number: SeverityNumber::Info as i32,
+                            severity_text: "INFO".to_string(),
                             attributes: vec![KeyValue {
                                 key: "http.method".to_string(),
                                 value: Some(AnyValue {
@@ -80,14 +82,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "Database query executed".to_string(),
                                 )),
                             }),
+                            severity_number: SeverityNumber::Debug as i32,
+                            severity_text: "DEBUG".to_string(),
                             ..Default::default()
                         },
                         LogRecord {
                             body: Some(AnyValue {
                                 value: Some(any_value::Value::StringValue(
-                                    "Response sent".to_string(),
+                                    "Connection error".to_string(),
                                 )),
                             }),
+                            severity_number: SeverityNumber::Error as i32,
+                            severity_text: "ERROR".to_string(),
                             ..Default::default()
                         },
                     ],
@@ -274,6 +280,41 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .with_resource_attributes([("service.name", "web-api")])
                 .count();
             println!("✓ count() returned {} matching spans", match_count);
+
+            // Dump all data (useful for debugging test failures)
+            println!("\n--- Debugging with dump() ---");
+            println!("{}", collector.dump());
+
+            println!("--- Severity Assertions ---");
+
+            // Assert on severity level
+            collector
+                .expect_log()
+                .with_severity(SeverityNumber::Error)
+                .assert_exists();
+            println!("✓ with_severity() - Found ERROR level log");
+
+            // Assert on severity_text
+            collector
+                .expect_log()
+                .with_severity_text("DEBUG")
+                .assert_exists();
+            println!("✓ with_severity_text() - Found log with severity_text=\"DEBUG\"");
+
+            // Count logs at specific severity
+            let error_count = collector
+                .expect_log()
+                .with_severity(SeverityNumber::Error)
+                .count();
+            println!("✓ Found {} ERROR level logs", error_count);
+
+            // Combine severity with other filters
+            collector
+                .expect_log_with_body("Connection error")
+                .with_severity(SeverityNumber::Error)
+                .with_resource_attributes([("service.name", "web-api")])
+                .assert_exists();
+            println!("✓ Combined severity + body + resource attributes");
         })
         .await;
 

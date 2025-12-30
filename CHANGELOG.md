@@ -7,6 +7,55 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.6](https://github.com/djvcom/mock-collector/compare/v0.2.5...v0.2.6) - 2025-12-22
+
+### Other
+
+- *(deps)* bump the minor-and-patch group with 3 updates ([#26](https://github.com/djvcom/mock-collector/pull/26))
+- *(deps)* bump tracing in the minor-and-patch group ([#25](https://github.com/djvcom/mock-collector/pull/25))
+- *(deps)* bump reqwest in the minor-and-patch group ([#24](https://github.com/djvcom/mock-collector/pull/24))
+- *(deps)* bump reqwest in the minor-and-patch group ([#23](https://github.com/djvcom/mock-collector/pull/23))
+
+## [0.2.5](https://github.com/djvcom/mock-collector/compare/v0.2.4...v0.2.5) - 2025-12-03
+
+### Added
+
+- add single-attribute methods for mixed-type assertions ([#21](https://github.com/djvcom/mock-collector/pull/21))
+
+### Other
+
+- *(deps)* bump the minor-and-patch group with 2 updates ([#17](https://github.com/djvcom/mock-collector/pull/17))
+
+## [0.2.4](https://github.com/djvcom/mock-collector/compare/v0.2.3...v0.2.4) - 2025-12-03
+
+### Other
+
+- repository improvements
+
+## [0.2.3](https://github.com/djvcom/mock-collector/compare/v0.2.2...v0.2.3) - 2025-12-02
+
+### Added
+
+- improve assertion error messages and dump() output
+
+## [0.2.2](https://github.com/djvcom/mock-collector/compare/v0.2.1...v0.2.2) - 2025-12-01
+
+### Fixed
+
+- disable opentelemetry-otlp default features to avoid HTTP client conflicts
+
+## [0.2.1](https://github.com/djvcom/mock-collector/compare/v0.2.0...v0.2.1) - 2025-11-29
+
+### Added
+
+- add async waiting methods for assertions
+
+## [0.2.0](https://github.com/djvcom/mock-collector/compare/v0.1.2...v0.2.0) - 2025-11-27
+
+### Added
+
+- [**breaking**] add otel-lambda-init package and workspace structure
+
 ## [0.1.2](https://github.com/djvcom/mock-collector/compare/v0.1.1...v0.1.2) - 2025-11-23
 
 ### Added

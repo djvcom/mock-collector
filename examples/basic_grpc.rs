@@ -90,6 +90,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Log records sent successfully!\n");
 
+    // In real tests, telemetry often arrives asynchronously (batched, buffered, etc.)
+    // Use wait_for_* methods to wait for data before asserting
+    use std::time::Duration;
+    server.wait_for_logs(3, Duration::from_secs(5)).await?;
+    println!("Logs arrived (waited with timeout)");
+
     // Perform assertions on collected data
     println!("Performing assertions...");
 
