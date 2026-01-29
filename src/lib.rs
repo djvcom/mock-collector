@@ -144,8 +144,8 @@ mod error;
 mod server;
 
 pub use collector::{
-    LogAssertion, MetricAssertion, MockCollector, SpanAssertion, TestLogRecord, TestMetric,
-    TestSpan,
+    ExponentialHistogramAssertion, HistogramAssertion, LogAssertion, MetricAssertion,
+    MockCollector, SpanAssertion, SummaryAssertion, TestLogRecord, TestMetric, TestSpan,
 };
 pub use error::MockServerError;
 pub use opentelemetry_otlp::Protocol;
