@@ -388,6 +388,7 @@ impl MockCollector {
             attributes: None,
             resource_attributes: None,
             scope_attributes: None,
+            value_predicates: Vec::new(),
         }
     }
 
@@ -413,6 +414,7 @@ impl MockCollector {
             attributes: None,
             resource_attributes: None,
             scope_attributes: None,
+            value_predicates: Vec::new(),
         }
     }
 }
@@ -1392,6 +1394,144 @@ impl<'a> SpanAssertion<'a> {
     }
 }
 
+/// Represents a numeric metric value for assertions.
+///
+/// Metric data points can contain either integer or floating-point values.
+/// This enum provides a unified representation for both types, enabling
+/// value-based assertions on Gauge and Sum metrics.
+#[derive(Debug, Clone, Copy)]
+pub enum MetricValue {
+    /// An integer value (i64).
+    Int(i64),
+    /// A floating-point value (f64).
+    Double(f64),
+}
+
+impl MetricValue {
+    /// Compares two metric values for approximate equality.
+    ///
+    /// For integer comparisons, uses exact equality.
+    /// For floating-point comparisons, uses epsilon-based comparison.
+    /// Mixed comparisons convert to f64.
+    fn approx_eq(&self, other: &MetricValue) -> bool {
+        match (self, other) {
+            (MetricValue::Int(a), MetricValue::Int(b)) => a == b,
+            (MetricValue::Double(a), MetricValue::Double(b)) => (a - b).abs() < f64::EPSILON,
+            (MetricValue::Int(a), MetricValue::Double(b))
+            | (MetricValue::Double(b), MetricValue::Int(a)) => {
+                ((*a as f64) - b).abs() < f64::EPSILON
+            }
+        }
+    }
+
+    /// Converts the metric value to f64 for comparison.
+    fn as_f64(&self) -> f64 {
+        match self {
+            MetricValue::Int(i) => *i as f64,
+            MetricValue::Double(d) => *d,
+        }
+    }
+}
+
+impl std::fmt::Display for MetricValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetricValue::Int(i) => write!(f, "{}", i),
+            MetricValue::Double(d) => write!(f, "{}", d),
+        }
+    }
+}
+
+impl From<i64> for MetricValue {
+    fn from(v: i64) -> Self {
+        MetricValue::Int(v)
+    }
+}
+
+impl From<i32> for MetricValue {
+    fn from(v: i32) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<i16> for MetricValue {
+    fn from(v: i16) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<i8> for MetricValue {
+    fn from(v: i8) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<u32> for MetricValue {
+    fn from(v: u32) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<u16> for MetricValue {
+    fn from(v: u16) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<u8> for MetricValue {
+    fn from(v: u8) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<f64> for MetricValue {
+    fn from(v: f64) -> Self {
+        MetricValue::Double(v)
+    }
+}
+
+impl From<f32> for MetricValue {
+    fn from(v: f32) -> Self {
+        MetricValue::Double(v.into())
+    }
+}
+
+/// Internal enum for metric value comparison predicates.
+#[derive(Debug, Clone)]
+enum MetricValuePredicate {
+    Eq(MetricValue),
+    Gt(MetricValue),
+    Gte(MetricValue),
+    Lt(MetricValue),
+    Lte(MetricValue),
+}
+
+impl MetricValuePredicate {
+    fn matches(&self, actual: &MetricValue) -> bool {
+        match self {
+            MetricValuePredicate::Eq(expected) => actual.approx_eq(expected),
+            MetricValuePredicate::Gt(expected) => actual.as_f64() > expected.as_f64(),
+            MetricValuePredicate::Gte(expected) => {
+                actual.as_f64() >= expected.as_f64() || actual.approx_eq(expected)
+            }
+            MetricValuePredicate::Lt(expected) => actual.as_f64() < expected.as_f64(),
+            MetricValuePredicate::Lte(expected) => {
+                actual.as_f64() <= expected.as_f64() || actual.approx_eq(expected)
+            }
+        }
+    }
+
+    fn format(&self) -> String {
+        match self {
+            MetricValuePredicate::Eq(v) => format!("== {}", v),
+            MetricValuePredicate::Gt(v) => format!("> {}", v),
+            MetricValuePredicate::Gte(v) => format!(">= {}", v),
+            MetricValuePredicate::Lt(v) => format!("< {}", v),
+            MetricValuePredicate::Lte(v) => format!("<= {}", v),
+        }
+    }
+}
+
 /// A builder for constructing metric assertions.
 #[derive(Debug)]
 pub struct MetricAssertion<'a> {
@@ -1400,6 +1540,7 @@ pub struct MetricAssertion<'a> {
     attributes: Option<Vec<(String, Value)>>,
     resource_attributes: Option<Vec<(String, Value)>>,
     scope_attributes: Option<Vec<(String, Value)>>,
+    value_predicates: Vec<MetricValuePredicate>,
 }
 
 impl<'a> MetricAssertion<'a> {
@@ -1596,6 +1737,116 @@ impl<'a> MetricAssertion<'a> {
         self
     }
 
+    /// Adds a value equality assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value equal to the
+    /// specified value. For floating-point comparisons, uses epsilon-based equality.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("http_requests_total")
+    ///     .with_value_eq(42)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Eq(value.into()));
+        self
+    }
+
+    /// Adds a value greater-than assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value strictly
+    /// greater than the specified value.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("queue_depth")
+    ///     .with_value_gt(0)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Gt(value.into()));
+        self
+    }
+
+    /// Adds a value greater-than-or-equal assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value greater than
+    /// or equal to the specified value.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("response_time_ms")
+    ///     .with_value_gte(100.0)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Gte(value.into()));
+        self
+    }
+
+    /// Adds a value less-than assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value strictly
+    /// less than the specified value.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("error_rate")
+    ///     .with_value_lt(0.01)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Lt(value.into()));
+        self
+    }
+
+    /// Adds a value less-than-or-equal assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value less than
+    /// or equal to the specified value.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("response_time_ms")
+    ///     .with_value_lte(500.0)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Lte(value.into()));
+        self
+    }
+
     fn matches_any(&self) -> bool {
         self.metrics.iter().any(|m| self.matches(m))
     }
@@ -1633,7 +1884,60 @@ impl<'a> MetricAssertion<'a> {
             return false;
         }
 
+        // Check value predicates
+        if !self.value_predicates.is_empty() {
+            let values = Self::get_data_point_values(&metric.metric);
+            if values.is_empty() {
+                return false;
+            }
+            // Check if ANY data point value satisfies ALL predicates
+            let has_matching_value = values.iter().any(|actual| {
+                self.value_predicates
+                    .iter()
+                    .all(|pred| pred.matches(actual))
+            });
+            if !has_matching_value {
+                return false;
+            }
+        }
+
         true
+    }
+
+    fn get_data_point_values(metric: &Metric) -> Vec<MetricValue> {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+        use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NumberValue;
+
+        let mut values = Vec::new();
+
+        if let Some(ref data) = metric.data {
+            match data {
+                Data::Gauge(gauge) => {
+                    for dp in &gauge.data_points {
+                        if let Some(ref v) = dp.value {
+                            match v {
+                                NumberValue::AsInt(i) => values.push(MetricValue::Int(*i)),
+                                NumberValue::AsDouble(d) => values.push(MetricValue::Double(*d)),
+                            }
+                        }
+                    }
+                }
+                Data::Sum(sum) => {
+                    for dp in &sum.data_points {
+                        if let Some(ref v) = dp.value {
+                            match v {
+                                NumberValue::AsInt(i) => values.push(MetricValue::Int(*i)),
+                                NumberValue::AsDouble(d) => values.push(MetricValue::Double(*d)),
+                            }
+                        }
+                    }
+                }
+                // Histogram, ExponentialHistogram, and Summary do not have simple scalar values
+                Data::Histogram(_) | Data::ExponentialHistogram(_) | Data::Summary(_) => {}
+            }
+        }
+
+        values
     }
 
     fn check_metric_data_points(metric: &Metric, expected: &[(String, Value)]) -> bool {
@@ -1717,6 +2021,10 @@ impl<'a> MetricAssertion<'a> {
         if let Some(scope_attrs) = &self.scope_attributes {
             criteria.push(format!("scope_attributes={:?}", scope_attrs));
         }
+        if !self.value_predicates.is_empty() {
+            let preds: Vec<String> = self.value_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("value({})", preds.join(" AND ")));
+        }
         criteria.join(", ")
     }
 
@@ -1761,6 +2069,13 @@ impl<'a> MetricAssertion<'a> {
             }
         }
 
+        if !self.value_predicates.is_empty() {
+            msg.push_str("  value:\n");
+            for pred in &self.value_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
         msg.push_str(&format!(
             "\nFound {} metric(s) in collector:\n",
             self.metrics.len()
@@ -1770,7 +2085,13 @@ impl<'a> MetricAssertion<'a> {
             for (idx, metric) in self.metrics.iter().take(10).enumerate() {
                 msg.push_str(&format!("  [{}] name=\"{}\"", idx, metric.metric.name));
 
-                // Show a sample of data point attributes if available
+                // Show data point values and attributes if available
+                let values = Self::get_data_point_values(&metric.metric);
+                if !values.is_empty() {
+                    let value_strs: Vec<String> = values.iter().map(|v| v.to_string()).collect();
+                    msg.push_str(&format!(", values=[{}]", value_strs.join(", ")));
+                }
+
                 if let Some(ref data) = metric.metric.data {
                     use opentelemetry_proto::tonic::metrics::v1::metric::Data;
                     let sample_attrs = match data {
@@ -2054,5 +2375,341 @@ mod tests {
             .with_attribute("endpoint", "/api/v1")
             .with_attribute("status", 200)
             .with_attribute("cached", true);
+    }
+
+    mod metric_value_tests {
+        use super::*;
+        use opentelemetry_proto::tonic::metrics::v1::{
+            Gauge, Metric, NumberDataPoint, Sum, metric::Data, number_data_point,
+        };
+
+        fn make_gauge_metric(name: &str, values: &[number_data_point::Value]) -> TestMetric {
+            let data_points: Vec<NumberDataPoint> = values
+                .iter()
+                .map(|v| NumberDataPoint {
+                    value: Some(*v),
+                    ..Default::default()
+                })
+                .collect();
+
+            TestMetric {
+                resource_attrs: Arc::new(vec![]),
+                scope_attrs: Arc::new(vec![]),
+                metric: Metric {
+                    name: name.to_string(),
+                    data: Some(Data::Gauge(Gauge { data_points })),
+                    ..Default::default()
+                },
+            }
+        }
+
+        fn make_sum_metric(name: &str, values: &[number_data_point::Value]) -> TestMetric {
+            let data_points: Vec<NumberDataPoint> = values
+                .iter()
+                .map(|v| NumberDataPoint {
+                    value: Some(*v),
+                    ..Default::default()
+                })
+                .collect();
+
+            TestMetric {
+                resource_attrs: Arc::new(vec![]),
+                scope_attrs: Arc::new(vec![]),
+                metric: Metric {
+                    name: name.to_string(),
+                    data: Some(Data::Sum(Sum {
+                        data_points,
+                        ..Default::default()
+                    })),
+                    ..Default::default()
+                },
+            }
+        }
+
+        #[test]
+        fn test_metric_value_from_i64() {
+            let v: MetricValue = 42i64.into();
+            assert!(matches!(v, MetricValue::Int(42)));
+        }
+
+        #[test]
+        fn test_metric_value_from_i32() {
+            let v: MetricValue = 42i32.into();
+            assert!(matches!(v, MetricValue::Int(42)));
+        }
+
+        #[test]
+        fn test_metric_value_from_f64() {
+            let v: MetricValue = 1.234f64.into();
+            assert!(matches!(v, MetricValue::Double(d) if (d - 1.234).abs() < f64::EPSILON));
+        }
+
+        #[test]
+        fn test_metric_value_from_f32() {
+            let v: MetricValue = 1.234f32.into();
+            assert!(matches!(v, MetricValue::Double(_)));
+        }
+
+        #[test]
+        fn test_metric_value_approx_eq_int() {
+            let a = MetricValue::Int(42);
+            let b = MetricValue::Int(42);
+            assert!(a.approx_eq(&b));
+
+            let c = MetricValue::Int(43);
+            assert!(!a.approx_eq(&c));
+        }
+
+        #[test]
+        fn test_metric_value_approx_eq_double() {
+            let a = MetricValue::Double(1.234);
+            let b = MetricValue::Double(1.234);
+            assert!(a.approx_eq(&b));
+
+            let c = MetricValue::Double(1.235);
+            assert!(!a.approx_eq(&c));
+        }
+
+        #[test]
+        fn test_metric_value_approx_eq_mixed() {
+            let a = MetricValue::Int(42);
+            let b = MetricValue::Double(42.0);
+            assert!(a.approx_eq(&b));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_eq() {
+            let pred = MetricValuePredicate::Eq(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(43)));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_gt() {
+            let pred = MetricValuePredicate::Gt(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(43)));
+            assert!(!pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(41)));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_gte() {
+            let pred = MetricValuePredicate::Gte(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(43)));
+            assert!(pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(41)));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_lt() {
+            let pred = MetricValuePredicate::Lt(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(41)));
+            assert!(!pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(43)));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_lte() {
+            let pred = MetricValuePredicate::Lte(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(41)));
+            assert!(pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(43)));
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_eq_int() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "test_metric",
+                &[number_data_point::Value::AsInt(42)],
+            ));
+
+            mc.expect_metric_with_name("test_metric")
+                .with_value_eq(42)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_eq_double() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "test_metric",
+                &[number_data_point::Value::AsDouble(1.234)],
+            ));
+
+            mc.expect_metric_with_name("test_metric")
+                .with_value_eq(1.234)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_gt() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_sum_metric(
+                "request_count",
+                &[number_data_point::Value::AsInt(100)],
+            ));
+
+            mc.expect_metric_with_name("request_count")
+                .with_value_gt(50)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_gte() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "temperature",
+                &[number_data_point::Value::AsDouble(25.0)],
+            ));
+
+            mc.expect_metric_with_name("temperature")
+                .with_value_gte(25.0)
+                .assert_exists();
+
+            mc.expect_metric_with_name("temperature")
+                .with_value_gte(24.0)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_lt() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "error_rate",
+                &[number_data_point::Value::AsDouble(0.01)],
+            ));
+
+            mc.expect_metric_with_name("error_rate")
+                .with_value_lt(0.05)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_lte() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_sum_metric(
+                "latency_ms",
+                &[number_data_point::Value::AsInt(100)],
+            ));
+
+            mc.expect_metric_with_name("latency_ms")
+                .with_value_lte(100)
+                .assert_exists();
+
+            mc.expect_metric_with_name("latency_ms")
+                .with_value_lte(200)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_chained_value_predicates() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "response_time",
+                &[number_data_point::Value::AsDouble(150.0)],
+            ));
+
+            mc.expect_metric_with_name("response_time")
+                .with_value_gte(100.0)
+                .with_value_lte(200.0)
+                .assert_exists();
+        }
+
+        #[test]
+        #[should_panic(expected = "No metrics matched the assertion")]
+        fn test_metric_assertion_value_not_found() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "counter",
+                &[number_data_point::Value::AsInt(10)],
+            ));
+
+            mc.expect_metric_with_name("counter")
+                .with_value_eq(42)
+                .assert_exists();
+        }
+
+        #[test]
+        #[should_panic(expected = "No metrics matched the assertion")]
+        fn test_metric_assertion_chained_predicates_no_match() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "value",
+                &[number_data_point::Value::AsInt(50)],
+            ));
+
+            mc.expect_metric_with_name("value")
+                .with_value_gte(100)
+                .with_value_lte(200)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_multiple_data_points() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "multi_point",
+                &[
+                    number_data_point::Value::AsInt(10),
+                    number_data_point::Value::AsInt(50),
+                    number_data_point::Value::AsInt(100),
+                ],
+            ));
+
+            mc.expect_metric_with_name("multi_point")
+                .with_value_eq(50)
+                .assert_exists();
+
+            mc.expect_metric_with_name("multi_point")
+                .with_value_gte(100)
+                .assert_exists();
+
+            mc.expect_metric_with_name("multi_point")
+                .with_value_lt(20)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_value_display() {
+            assert_eq!(format!("{}", MetricValue::Int(42)), "42");
+            assert_eq!(format!("{}", MetricValue::Double(1.234)), "1.234");
+        }
+
+        #[test]
+        fn test_metric_value_predicate_format() {
+            assert_eq!(
+                MetricValuePredicate::Eq(MetricValue::Int(42)).format(),
+                "== 42"
+            );
+            assert_eq!(
+                MetricValuePredicate::Gt(MetricValue::Int(42)).format(),
+                "> 42"
+            );
+            assert_eq!(
+                MetricValuePredicate::Gte(MetricValue::Double(1.234)).format(),
+                ">= 1.234"
+            );
+            assert_eq!(
+                MetricValuePredicate::Lt(MetricValue::Int(100)).format(),
+                "< 100"
+            );
+            assert_eq!(
+                MetricValuePredicate::Lte(MetricValue::Double(99.9)).format(),
+                "<= 99.9"
+            );
+        }
+
+        #[test]
+        fn test_format_criteria_includes_value_predicates() {
+            let mc = MockCollector::new();
+            let assertion = mc
+                .expect_metric_with_name("test")
+                .with_value_gte(100)
+                .with_value_lt(200);
+
+            let criteria = assertion.format_criteria();
+            assert!(criteria.contains("value(>= 100 AND < 200)"));
+        }
     }
 }
