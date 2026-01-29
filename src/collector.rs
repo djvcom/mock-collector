@@ -1597,7 +1597,7 @@ impl From<f32> for MetricValue {
 
 /// Internal enum for metric value comparison predicates.
 #[derive(Debug, Clone)]
-enum MetricValuePredicate {
+pub(crate) enum MetricValuePredicate {
     Eq(MetricValue),
     Gt(MetricValue),
     Gte(MetricValue),
@@ -1637,7 +1637,7 @@ impl MetricValuePredicate {
 
 /// Internal enum for count (u64) comparison predicates.
 #[derive(Debug, Clone)]
-enum CountPredicate {
+pub(crate) enum CountPredicate {
     Eq(u64),
     Gt(u64),
     Gte(u64),
@@ -1679,6 +1679,212 @@ struct BucketPredicate {
 struct QuantilePredicate {
     quantile: f64,
     predicate: MetricValuePredicate,
+}
+
+fn check_attributes(attrs: &[KeyValue], expected: &[(String, Value)]) -> bool {
+    expected.iter().all(|(key, value)| {
+        attrs
+            .iter()
+            .any(|kv| &kv.key == key && any_value_matches(&kv.value, value))
+    })
+}
+
+fn any_value_matches(
+    attr_value: &Option<opentelemetry_proto::tonic::common::v1::AnyValue>,
+    expected: &Value,
+) -> bool {
+    use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValueInner;
+
+    match attr_value {
+        Some(av) => match &av.value {
+            Some(AnyValueInner::StringValue(s)) => {
+                expected.as_str().map(|exp| s == exp).unwrap_or(false)
+            }
+            Some(AnyValueInner::IntValue(i)) => {
+                expected.as_i64().map(|exp| *i == exp).unwrap_or(false)
+            }
+            Some(AnyValueInner::DoubleValue(d)) => expected
+                .as_f64()
+                .map(|n| (*d - n).abs() < f64::EPSILON)
+                .unwrap_or(false),
+            Some(AnyValueInner::BoolValue(b)) => {
+                expected.as_bool().map(|exp| *b == exp).unwrap_or(false)
+            }
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+fn get_metric_type_name(metric: &Metric) -> &'static str {
+    use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+    match &metric.data {
+        Some(Data::Gauge(_)) => "Gauge",
+        Some(Data::Sum(_)) => "Sum",
+        Some(Data::Histogram(_)) => "Histogram",
+        Some(Data::ExponentialHistogram(_)) => "ExponentialHistogram",
+        Some(Data::Summary(_)) => "Summary",
+        None => "None",
+    }
+}
+
+/// Generates count predicate methods (with_count_eq, with_count_gt, etc.)
+macro_rules! impl_count_predicates {
+    ($field:ident) => {
+        /// Adds a count equality assertion.
+        #[must_use]
+        pub fn with_count_eq(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Eq(count));
+            self
+        }
+
+        /// Adds a count greater-than assertion.
+        #[must_use]
+        pub fn with_count_gt(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Gt(count));
+            self
+        }
+
+        /// Adds a count greater-than-or-equal assertion.
+        #[must_use]
+        pub fn with_count_gte(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Gte(count));
+            self
+        }
+
+        /// Adds a count less-than assertion.
+        #[must_use]
+        pub fn with_count_lt(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Lt(count));
+            self
+        }
+
+        /// Adds a count less-than-or-equal assertion.
+        #[must_use]
+        pub fn with_count_lte(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Lte(count));
+            self
+        }
+    };
+}
+
+/// Generates sum predicate methods (with_sum_eq, with_sum_gt, etc.)
+macro_rules! impl_sum_predicates {
+    ($field:ident) => {
+        /// Adds a sum equality assertion.
+        #[must_use]
+        pub fn with_sum_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Eq(value.into()));
+            self
+        }
+
+        /// Adds a sum greater-than assertion.
+        #[must_use]
+        pub fn with_sum_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Gt(value.into()));
+            self
+        }
+
+        /// Adds a sum greater-than-or-equal assertion.
+        #[must_use]
+        pub fn with_sum_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Gte(value.into()));
+            self
+        }
+
+        /// Adds a sum less-than assertion.
+        #[must_use]
+        pub fn with_sum_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Lt(value.into()));
+            self
+        }
+
+        /// Adds a sum less-than-or-equal assertion.
+        #[must_use]
+        pub fn with_sum_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Lte(value.into()));
+            self
+        }
+    };
+}
+
+/// Generates min/max predicate methods
+macro_rules! impl_min_max_predicates {
+    ($min_field:ident, $max_field:ident) => {
+        /// Adds a min value equality assertion.
+        #[must_use]
+        pub fn with_min_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field.push(MetricValuePredicate::Eq(value.into()));
+            self
+        }
+
+        /// Adds a min value greater-than assertion.
+        #[must_use]
+        pub fn with_min_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field.push(MetricValuePredicate::Gt(value.into()));
+            self
+        }
+
+        /// Adds a min value greater-than-or-equal assertion.
+        #[must_use]
+        pub fn with_min_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field
+                .push(MetricValuePredicate::Gte(value.into()));
+            self
+        }
+
+        /// Adds a min value less-than assertion.
+        #[must_use]
+        pub fn with_min_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field.push(MetricValuePredicate::Lt(value.into()));
+            self
+        }
+
+        /// Adds a min value less-than-or-equal assertion.
+        #[must_use]
+        pub fn with_min_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field
+                .push(MetricValuePredicate::Lte(value.into()));
+            self
+        }
+
+        /// Adds a max value equality assertion.
+        #[must_use]
+        pub fn with_max_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field.push(MetricValuePredicate::Eq(value.into()));
+            self
+        }
+
+        /// Adds a max value greater-than assertion.
+        #[must_use]
+        pub fn with_max_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field.push(MetricValuePredicate::Gt(value.into()));
+            self
+        }
+
+        /// Adds a max value greater-than-or-equal assertion.
+        #[must_use]
+        pub fn with_max_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field
+                .push(MetricValuePredicate::Gte(value.into()));
+            self
+        }
+
+        /// Adds a max value less-than assertion.
+        #[must_use]
+        pub fn with_max_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field.push(MetricValuePredicate::Lt(value.into()));
+            self
+        }
+
+        /// Adds a max value less-than-or-equal assertion.
+        #[must_use]
+        pub fn with_max_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field
+                .push(MetricValuePredicate::Lte(value.into()));
+            self
+        }
+    };
 }
 
 /// A builder for constructing metric assertions.
@@ -2487,161 +2693,6 @@ impl<'a> HistogramAssertion<'a> {
         self
     }
 
-    /// Adds a count equality assertion.
-    #[must_use]
-    pub fn with_count_eq(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Eq(count));
-        self
-    }
-
-    /// Adds a count greater-than assertion.
-    #[must_use]
-    pub fn with_count_gt(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Gt(count));
-        self
-    }
-
-    /// Adds a count greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_count_gte(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Gte(count));
-        self
-    }
-
-    /// Adds a count less-than assertion.
-    #[must_use]
-    pub fn with_count_lt(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Lt(count));
-        self
-    }
-
-    /// Adds a count less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_count_lte(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Lte(count));
-        self
-    }
-
-    /// Adds a sum equality assertion.
-    #[must_use]
-    pub fn with_sum_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Eq(value.into()));
-        self
-    }
-
-    /// Adds a sum greater-than assertion.
-    #[must_use]
-    pub fn with_sum_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Gt(value.into()));
-        self
-    }
-
-    /// Adds a sum greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_sum_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Gte(value.into()));
-        self
-    }
-
-    /// Adds a sum less-than assertion.
-    #[must_use]
-    pub fn with_sum_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Lt(value.into()));
-        self
-    }
-
-    /// Adds a sum less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_sum_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Lte(value.into()));
-        self
-    }
-
-    /// Adds a min value equality assertion.
-    #[must_use]
-    pub fn with_min_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Eq(value.into()));
-        self
-    }
-
-    /// Adds a min value greater-than assertion.
-    #[must_use]
-    pub fn with_min_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Gt(value.into()));
-        self
-    }
-
-    /// Adds a min value greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_min_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Gte(value.into()));
-        self
-    }
-
-    /// Adds a min value less-than assertion.
-    #[must_use]
-    pub fn with_min_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Lt(value.into()));
-        self
-    }
-
-    /// Adds a min value less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_min_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Lte(value.into()));
-        self
-    }
-
-    /// Adds a max value equality assertion.
-    #[must_use]
-    pub fn with_max_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Eq(value.into()));
-        self
-    }
-
-    /// Adds a max value greater-than assertion.
-    #[must_use]
-    pub fn with_max_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Gt(value.into()));
-        self
-    }
-
-    /// Adds a max value greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_max_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Gte(value.into()));
-        self
-    }
-
-    /// Adds a max value less-than assertion.
-    #[must_use]
-    pub fn with_max_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Lt(value.into()));
-        self
-    }
-
-    /// Adds a max value less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_max_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Lte(value.into()));
-        self
-    }
-
     /// Adds a bucket count equality assertion for a specific bucket index.
     #[must_use]
     pub fn with_bucket_count_eq(mut self, index: usize, count: u64) -> Self {
@@ -2692,6 +2743,10 @@ impl<'a> HistogramAssertion<'a> {
         self
     }
 
+    impl_count_predicates!(count_predicates);
+    impl_sum_predicates!(sum_predicates);
+    impl_min_max_predicates!(min_predicates, max_predicates);
+
     fn matches_any(&self) -> bool {
         self.metrics.iter().any(|m| self.matches(m))
     }
@@ -2714,14 +2769,14 @@ impl<'a> HistogramAssertion<'a> {
 
         // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes
-            && !Self::check_attributes(&metric.resource_attrs, expected_attrs)
+            && !check_attributes(&metric.resource_attrs, expected_attrs)
         {
             return false;
         }
 
         // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes
-            && !Self::check_attributes(&metric.scope_attrs, expected_attrs)
+            && !check_attributes(&metric.scope_attrs, expected_attrs)
         {
             return false;
         }
@@ -2730,7 +2785,7 @@ impl<'a> HistogramAssertion<'a> {
         histogram.data_points.iter().any(|dp| {
             // Check data point attributes
             if let Some(ref expected_attrs) = self.attributes
-                && !Self::check_attributes(&dp.attributes, expected_attrs)
+                && !check_attributes(&dp.attributes, expected_attrs)
             {
                 return false;
             }
@@ -2795,41 +2850,6 @@ impl<'a> HistogramAssertion<'a> {
         })
     }
 
-    fn check_attributes(attrs: &[KeyValue], expected: &[(String, Value)]) -> bool {
-        expected.iter().all(|(key, value)| {
-            attrs
-                .iter()
-                .any(|kv| &kv.key == key && Self::any_value_matches(&kv.value, value))
-        })
-    }
-
-    fn any_value_matches(
-        attr_value: &Option<opentelemetry_proto::tonic::common::v1::AnyValue>,
-        expected: &Value,
-    ) -> bool {
-        use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
-
-        match attr_value {
-            Some(av) => match &av.value {
-                Some(AnyValue::StringValue(s)) => {
-                    expected.as_str().map(|exp| s == exp).unwrap_or(false)
-                }
-                Some(AnyValue::IntValue(i)) => {
-                    expected.as_i64().map(|exp| *i == exp).unwrap_or(false)
-                }
-                Some(AnyValue::DoubleValue(d)) => expected
-                    .as_f64()
-                    .map(|n| (*d - n).abs() < f64::EPSILON)
-                    .unwrap_or(false),
-                Some(AnyValue::BoolValue(b)) => {
-                    expected.as_bool().map(|exp| *b == exp).unwrap_or(false)
-                }
-                _ => false,
-            },
-            None => false,
-        }
-    }
-
     fn format_criteria(&self) -> String {
         let mut criteria = Vec::new();
         if let Some(name) = &self.name {
@@ -2877,18 +2897,6 @@ impl<'a> HistogramAssertion<'a> {
             output.push_str(&format!("  [{}] name=\"{}\"\n", idx, metric.metric.name));
         }
         output
-    }
-
-    fn get_metric_type_name(metric: &Metric) -> &'static str {
-        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
-        match &metric.data {
-            Some(Data::Gauge(_)) => "Gauge",
-            Some(Data::Sum(_)) => "Sum",
-            Some(Data::Histogram(_)) => "Histogram",
-            Some(Data::ExponentialHistogram(_)) => "ExponentialHistogram",
-            Some(Data::Summary(_)) => "Summary",
-            None => "None",
-        }
     }
 
     fn build_error_message(&self) -> String {
@@ -2976,7 +2984,7 @@ impl<'a> HistogramAssertion<'a> {
         ));
 
         for (idx, metric) in name_matches.iter().take(10).enumerate() {
-            let type_name = Self::get_metric_type_name(&metric.metric);
+            let type_name = get_metric_type_name(&metric.metric);
             msg.push_str(&format!("  [{}] type={}", idx, type_name));
 
             if let Some(Data::Histogram(h)) = &metric.metric.data
@@ -3210,161 +3218,6 @@ impl<'a> ExponentialHistogramAssertion<'a> {
         self
     }
 
-    /// Adds a count equality assertion.
-    #[must_use]
-    pub fn with_count_eq(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Eq(count));
-        self
-    }
-
-    /// Adds a count greater-than assertion.
-    #[must_use]
-    pub fn with_count_gt(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Gt(count));
-        self
-    }
-
-    /// Adds a count greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_count_gte(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Gte(count));
-        self
-    }
-
-    /// Adds a count less-than assertion.
-    #[must_use]
-    pub fn with_count_lt(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Lt(count));
-        self
-    }
-
-    /// Adds a count less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_count_lte(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Lte(count));
-        self
-    }
-
-    /// Adds a sum equality assertion.
-    #[must_use]
-    pub fn with_sum_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Eq(value.into()));
-        self
-    }
-
-    /// Adds a sum greater-than assertion.
-    #[must_use]
-    pub fn with_sum_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Gt(value.into()));
-        self
-    }
-
-    /// Adds a sum greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_sum_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Gte(value.into()));
-        self
-    }
-
-    /// Adds a sum less-than assertion.
-    #[must_use]
-    pub fn with_sum_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Lt(value.into()));
-        self
-    }
-
-    /// Adds a sum less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_sum_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Lte(value.into()));
-        self
-    }
-
-    /// Adds a min value equality assertion.
-    #[must_use]
-    pub fn with_min_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Eq(value.into()));
-        self
-    }
-
-    /// Adds a min value greater-than assertion.
-    #[must_use]
-    pub fn with_min_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Gt(value.into()));
-        self
-    }
-
-    /// Adds a min value greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_min_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Gte(value.into()));
-        self
-    }
-
-    /// Adds a min value less-than assertion.
-    #[must_use]
-    pub fn with_min_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Lt(value.into()));
-        self
-    }
-
-    /// Adds a min value less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_min_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.min_predicates
-            .push(MetricValuePredicate::Lte(value.into()));
-        self
-    }
-
-    /// Adds a max value equality assertion.
-    #[must_use]
-    pub fn with_max_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Eq(value.into()));
-        self
-    }
-
-    /// Adds a max value greater-than assertion.
-    #[must_use]
-    pub fn with_max_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Gt(value.into()));
-        self
-    }
-
-    /// Adds a max value greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_max_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Gte(value.into()));
-        self
-    }
-
-    /// Adds a max value less-than assertion.
-    #[must_use]
-    pub fn with_max_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Lt(value.into()));
-        self
-    }
-
-    /// Adds a max value less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_max_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.max_predicates
-            .push(MetricValuePredicate::Lte(value.into()));
-        self
-    }
-
     /// Adds a zero count equality assertion.
     #[must_use]
     pub fn with_zero_count_eq(mut self, count: u64) -> Self {
@@ -3407,6 +3260,10 @@ impl<'a> ExponentialHistogramAssertion<'a> {
         self
     }
 
+    impl_count_predicates!(count_predicates);
+    impl_sum_predicates!(sum_predicates);
+    impl_min_max_predicates!(min_predicates, max_predicates);
+
     fn matches_any(&self) -> bool {
         self.metrics.iter().any(|m| self.matches(m))
     }
@@ -3429,14 +3286,14 @@ impl<'a> ExponentialHistogramAssertion<'a> {
 
         // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes
-            && !Self::check_attributes(&metric.resource_attrs, expected_attrs)
+            && !check_attributes(&metric.resource_attrs, expected_attrs)
         {
             return false;
         }
 
         // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes
-            && !Self::check_attributes(&metric.scope_attrs, expected_attrs)
+            && !check_attributes(&metric.scope_attrs, expected_attrs)
         {
             return false;
         }
@@ -3445,7 +3302,7 @@ impl<'a> ExponentialHistogramAssertion<'a> {
         exp_histogram.data_points.iter().any(|dp| {
             // Check data point attributes
             if let Some(ref expected_attrs) = self.attributes
-                && !Self::check_attributes(&dp.attributes, expected_attrs)
+                && !check_attributes(&dp.attributes, expected_attrs)
             {
                 return false;
             }
@@ -3515,41 +3372,6 @@ impl<'a> ExponentialHistogramAssertion<'a> {
         })
     }
 
-    fn check_attributes(attrs: &[KeyValue], expected: &[(String, Value)]) -> bool {
-        expected.iter().all(|(key, value)| {
-            attrs
-                .iter()
-                .any(|kv| &kv.key == key && Self::any_value_matches(&kv.value, value))
-        })
-    }
-
-    fn any_value_matches(
-        attr_value: &Option<opentelemetry_proto::tonic::common::v1::AnyValue>,
-        expected: &Value,
-    ) -> bool {
-        use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
-
-        match attr_value {
-            Some(av) => match &av.value {
-                Some(AnyValue::StringValue(s)) => {
-                    expected.as_str().map(|exp| s == exp).unwrap_or(false)
-                }
-                Some(AnyValue::IntValue(i)) => {
-                    expected.as_i64().map(|exp| *i == exp).unwrap_or(false)
-                }
-                Some(AnyValue::DoubleValue(d)) => expected
-                    .as_f64()
-                    .map(|n| (*d - n).abs() < f64::EPSILON)
-                    .unwrap_or(false),
-                Some(AnyValue::BoolValue(b)) => {
-                    expected.as_bool().map(|exp| *b == exp).unwrap_or(false)
-                }
-                _ => false,
-            },
-            None => false,
-        }
-    }
-
     fn format_criteria(&self) -> String {
         let mut criteria = Vec::new();
         if let Some(name) = &self.name {
@@ -3605,18 +3427,6 @@ impl<'a> ExponentialHistogramAssertion<'a> {
             output.push_str(&format!("  [{}] name=\"{}\"\n", idx, metric.metric.name));
         }
         output
-    }
-
-    fn get_metric_type_name(metric: &Metric) -> &'static str {
-        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
-        match &metric.data {
-            Some(Data::Gauge(_)) => "Gauge",
-            Some(Data::Sum(_)) => "Sum",
-            Some(Data::Histogram(_)) => "Histogram",
-            Some(Data::ExponentialHistogram(_)) => "ExponentialHistogram",
-            Some(Data::Summary(_)) => "Summary",
-            None => "None",
-        }
     }
 
     fn build_error_message(&self) -> String {
@@ -3708,7 +3518,7 @@ impl<'a> ExponentialHistogramAssertion<'a> {
         ));
 
         for (idx, metric) in name_matches.iter().take(10).enumerate() {
-            let type_name = Self::get_metric_type_name(&metric.metric);
+            let type_name = get_metric_type_name(&metric.metric);
             msg.push_str(&format!("  [{}] type={}", idx, type_name));
 
             if let Some(Data::ExponentialHistogram(h)) = &metric.metric.data
@@ -3945,81 +3755,6 @@ impl<'a> SummaryAssertion<'a> {
         self
     }
 
-    /// Adds a count equality assertion.
-    #[must_use]
-    pub fn with_count_eq(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Eq(count));
-        self
-    }
-
-    /// Adds a count greater-than assertion.
-    #[must_use]
-    pub fn with_count_gt(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Gt(count));
-        self
-    }
-
-    /// Adds a count greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_count_gte(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Gte(count));
-        self
-    }
-
-    /// Adds a count less-than assertion.
-    #[must_use]
-    pub fn with_count_lt(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Lt(count));
-        self
-    }
-
-    /// Adds a count less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_count_lte(mut self, count: u64) -> Self {
-        self.count_predicates.push(CountPredicate::Lte(count));
-        self
-    }
-
-    /// Adds a sum equality assertion.
-    #[must_use]
-    pub fn with_sum_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Eq(value.into()));
-        self
-    }
-
-    /// Adds a sum greater-than assertion.
-    #[must_use]
-    pub fn with_sum_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Gt(value.into()));
-        self
-    }
-
-    /// Adds a sum greater-than-or-equal assertion.
-    #[must_use]
-    pub fn with_sum_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Gte(value.into()));
-        self
-    }
-
-    /// Adds a sum less-than assertion.
-    #[must_use]
-    pub fn with_sum_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Lt(value.into()));
-        self
-    }
-
-    /// Adds a sum less-than-or-equal assertion.
-    #[must_use]
-    pub fn with_sum_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
-        self.sum_predicates
-            .push(MetricValuePredicate::Lte(value.into()));
-        self
-    }
-
     /// Adds a quantile value equality assertion.
     ///
     /// Asserts that the quantile value (e.g., p50, p99) equals the expected value.
@@ -4072,6 +3807,9 @@ impl<'a> SummaryAssertion<'a> {
         self
     }
 
+    impl_count_predicates!(count_predicates);
+    impl_sum_predicates!(sum_predicates);
+
     fn matches_any(&self) -> bool {
         self.metrics.iter().any(|m| self.matches(m))
     }
@@ -4094,14 +3832,14 @@ impl<'a> SummaryAssertion<'a> {
 
         // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes
-            && !Self::check_attributes(&metric.resource_attrs, expected_attrs)
+            && !check_attributes(&metric.resource_attrs, expected_attrs)
         {
             return false;
         }
 
         // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes
-            && !Self::check_attributes(&metric.scope_attrs, expected_attrs)
+            && !check_attributes(&metric.scope_attrs, expected_attrs)
         {
             return false;
         }
@@ -4110,7 +3848,7 @@ impl<'a> SummaryAssertion<'a> {
         summary.data_points.iter().any(|dp| {
             // Check data point attributes
             if let Some(ref expected_attrs) = self.attributes
-                && !Self::check_attributes(&dp.attributes, expected_attrs)
+                && !check_attributes(&dp.attributes, expected_attrs)
             {
                 return false;
             }
@@ -4148,41 +3886,6 @@ impl<'a> SummaryAssertion<'a> {
 
             true
         })
-    }
-
-    fn check_attributes(attrs: &[KeyValue], expected: &[(String, Value)]) -> bool {
-        expected.iter().all(|(key, value)| {
-            attrs
-                .iter()
-                .any(|kv| &kv.key == key && Self::any_value_matches(&kv.value, value))
-        })
-    }
-
-    fn any_value_matches(
-        attr_value: &Option<opentelemetry_proto::tonic::common::v1::AnyValue>,
-        expected: &Value,
-    ) -> bool {
-        use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValue;
-
-        match attr_value {
-            Some(av) => match &av.value {
-                Some(AnyValue::StringValue(s)) => {
-                    expected.as_str().map(|exp| s == exp).unwrap_or(false)
-                }
-                Some(AnyValue::IntValue(i)) => {
-                    expected.as_i64().map(|exp| *i == exp).unwrap_or(false)
-                }
-                Some(AnyValue::DoubleValue(d)) => expected
-                    .as_f64()
-                    .map(|n| (*d - n).abs() < f64::EPSILON)
-                    .unwrap_or(false),
-                Some(AnyValue::BoolValue(b)) => {
-                    expected.as_bool().map(|exp| *b == exp).unwrap_or(false)
-                }
-                _ => false,
-            },
-            None => false,
-        }
     }
 
     fn format_criteria(&self) -> String {
@@ -4228,18 +3931,6 @@ impl<'a> SummaryAssertion<'a> {
             output.push_str(&format!("  [{}] name=\"{}\"\n", idx, metric.metric.name));
         }
         output
-    }
-
-    fn get_metric_type_name(metric: &Metric) -> &'static str {
-        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
-        match &metric.data {
-            Some(Data::Gauge(_)) => "Gauge",
-            Some(Data::Sum(_)) => "Sum",
-            Some(Data::Histogram(_)) => "Histogram",
-            Some(Data::ExponentialHistogram(_)) => "ExponentialHistogram",
-            Some(Data::Summary(_)) => "Summary",
-            None => "None",
-        }
     }
 
     fn build_error_message(&self) -> String {
@@ -4313,7 +4004,7 @@ impl<'a> SummaryAssertion<'a> {
         ));
 
         for (idx, metric) in name_matches.iter().take(10).enumerate() {
-            let type_name = Self::get_metric_type_name(&metric.metric);
+            let type_name = get_metric_type_name(&metric.metric);
             msg.push_str(&format!("  [{}] type={}", idx, type_name));
 
             if let Some(Data::Summary(s)) = &metric.metric.data

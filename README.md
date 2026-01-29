@@ -284,6 +284,37 @@ collector.expect_metric_with_name("cache_hits").assert_at_least(5);
 collector.expect_metric_with_name("errors_total").assert_at_most(2);
 ```
 
+### Histogram and Summary Assertions
+
+For histogram and summary metrics, use type-specific assertion builders:
+
+```rust
+// Histogram assertions
+collector
+    .expect_histogram("http_request_duration")
+    .with_attributes([("method", "GET")])
+    .with_count_gte(100)
+    .with_sum_gte(5000.0)
+    .with_bucket_count_gte(2, 50)  // bucket index 2 has >= 50 observations
+    .assert_exists();
+
+// Summary assertions with quantile checks
+collector
+    .expect_summary("response_time")
+    .with_count_gte(100)
+    .with_quantile_lte(0.5, 100.0)   // median <= 100ms
+    .with_quantile_lte(0.99, 500.0)  // p99 <= 500ms
+    .assert_exists();
+
+// Exponential histogram assertions
+collector
+    .expect_exponential_histogram("latency")
+    .with_count_gte(100)
+    .with_zero_count_lte(5)
+    .with_scale_eq(3)
+    .assert_exists();
+```
+
 ### Matching Criteria
 
 All three signals (logs, spans, and metrics) support matching on attributes, resource attributes, and scope attributes:
