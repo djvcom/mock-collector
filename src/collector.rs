@@ -388,6 +388,7 @@ impl MockCollector {
             attributes: None,
             resource_attributes: None,
             scope_attributes: None,
+            value_predicates: Vec::new(),
         }
     }
 
@@ -413,6 +414,106 @@ impl MockCollector {
             attributes: None,
             resource_attributes: None,
             scope_attributes: None,
+            value_predicates: Vec::new(),
+        }
+    }
+
+    /// Starts building an assertion for histogram metrics with the specified name.
+    ///
+    /// This provides type-specific assertion methods for histogram data points,
+    /// including count, sum, min, max, and bucket-level assertions.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_histogram("http_request_duration")
+    ///     .with_attributes([("method", "GET")])
+    ///     .with_count_gte(100)
+    ///     .with_sum_gte(5000.0)
+    ///     .assert_exists();
+    /// ```
+    pub fn expect_histogram<S: Into<String>>(&self, name: S) -> HistogramAssertion<'_> {
+        HistogramAssertion {
+            metrics: &self.metrics,
+            name: Some(name.into()),
+            attributes: None,
+            resource_attributes: None,
+            scope_attributes: None,
+            count_predicates: Vec::new(),
+            sum_predicates: Vec::new(),
+            min_predicates: Vec::new(),
+            max_predicates: Vec::new(),
+            bucket_predicates: Vec::new(),
+        }
+    }
+
+    /// Starts building an assertion for exponential histogram metrics with the specified name.
+    ///
+    /// This provides type-specific assertion methods for exponential histogram data points,
+    /// including count, sum, min, max, zero_count, and scale assertions.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_exponential_histogram("latency")
+    ///     .with_count_gte(100)
+    ///     .with_sum_gte(5000.0)
+    ///     .with_zero_count_lte(5)
+    ///     .assert_exists();
+    /// ```
+    pub fn expect_exponential_histogram<S: Into<String>>(
+        &self,
+        name: S,
+    ) -> ExponentialHistogramAssertion<'_> {
+        ExponentialHistogramAssertion {
+            metrics: &self.metrics,
+            name: Some(name.into()),
+            attributes: None,
+            resource_attributes: None,
+            scope_attributes: None,
+            count_predicates: Vec::new(),
+            sum_predicates: Vec::new(),
+            min_predicates: Vec::new(),
+            max_predicates: Vec::new(),
+            zero_count_predicates: Vec::new(),
+            scale_predicate: None,
+        }
+    }
+
+    /// Starts building an assertion for summary metrics with the specified name.
+    ///
+    /// This provides type-specific assertion methods for summary data points,
+    /// including count, sum, and quantile-level assertions.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_summary("response_time")
+    ///     .with_count_gte(100)
+    ///     .with_sum_gte(5000.0)
+    ///     .with_quantile_lte(0.5, 100.0)   // median <= 100ms
+    ///     .with_quantile_lte(0.99, 500.0)  // p99 <= 500ms
+    ///     .assert_exists();
+    /// ```
+    pub fn expect_summary<S: Into<String>>(&self, name: S) -> SummaryAssertion<'_> {
+        SummaryAssertion {
+            metrics: &self.metrics,
+            name: Some(name.into()),
+            attributes: None,
+            resource_attributes: None,
+            scope_attributes: None,
+            count_predicates: Vec::new(),
+            sum_predicates: Vec::new(),
+            quantile_predicates: Vec::new(),
         }
     }
 }
@@ -694,7 +795,6 @@ impl<'a> LogAssertion<'a> {
     }
 
     fn matches(&self, test_log: &TestLogRecord) -> bool {
-        // Check body if specified
         if let Some(expected_body) = &self.body {
             if let Some(body) = &test_log.log_record.body {
                 if let Some(string_value) = &body.value {
@@ -711,35 +811,30 @@ impl<'a> LogAssertion<'a> {
             }
         }
 
-        // Check attributes if specified
         if let Some(expected_attrs) = &self.attributes
             && !Self::check_attributes(&test_log.log_record.attributes, expected_attrs)
         {
             return false;
         }
 
-        // Check resource attributes if specified
         if let Some(expected_res_attrs) = &self.resource_attributes
             && !Self::check_attributes(&test_log.resource_attrs, expected_res_attrs)
         {
             return false;
         }
 
-        // Check scope attributes if specified
         if let Some(expected_scope_attrs) = &self.scope_attributes
             && !Self::check_attributes(&test_log.scope_attrs, expected_scope_attrs)
         {
             return false;
         }
 
-        // Check severity number if specified
         if let Some(expected_severity) = self.severity_number
             && test_log.log_record.severity_number != expected_severity
         {
             return false;
         }
 
-        // Check severity text if specified
         if let Some(ref expected_text) = self.severity_text
             && &test_log.log_record.severity_text != expected_text
         {
@@ -1154,14 +1249,12 @@ impl<'a> SpanAssertion<'a> {
     }
 
     fn matches(&self, span: &TestSpan) -> bool {
-        // Check name
         if let Some(ref expected_name) = self.name
             && &span.span.name != expected_name
         {
             return false;
         }
 
-        // Check attributes
         if let Some(ref expected_attrs) = self.attributes {
             for (key, value) in expected_attrs {
                 if !span
@@ -1175,7 +1268,6 @@ impl<'a> SpanAssertion<'a> {
             }
         }
 
-        // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes {
             for (key, value) in expected_attrs {
                 if !span
@@ -1188,7 +1280,6 @@ impl<'a> SpanAssertion<'a> {
             }
         }
 
-        // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes {
             for (key, value) in expected_attrs {
                 if !span
@@ -1201,7 +1292,6 @@ impl<'a> SpanAssertion<'a> {
             }
         }
 
-        // Check event names
         if let Some(ref expected_event_names) = self.event_names {
             for expected_name in expected_event_names {
                 if !span
@@ -1215,17 +1305,12 @@ impl<'a> SpanAssertion<'a> {
             }
         }
 
-        // Check events with attributes
         if let Some(ref expected_events) = self.event_with_attributes {
             for (event_name, expected_attrs) in expected_events {
-                // Find an event with matching name and all expected attributes
                 let found = span.span.events.iter().any(|event| {
-                    // First check if event name matches
                     if &event.name != event_name {
                         return false;
                     }
-
-                    // Then check if all expected attributes are present
                     expected_attrs.iter().all(|(key, value)| {
                         event.attributes.iter().any(|attr| {
                             &attr.key == key && Self::any_value_matches(&attr.value, value)
@@ -1392,6 +1477,400 @@ impl<'a> SpanAssertion<'a> {
     }
 }
 
+/// Represents a numeric metric value for assertions.
+///
+/// Metric data points can contain either integer or floating-point values.
+/// This enum provides a unified representation for both types, enabling
+/// value-based assertions on Gauge and Sum metrics.
+#[derive(Debug, Clone, Copy)]
+pub enum MetricValue {
+    /// An integer value (i64).
+    Int(i64),
+    /// A floating-point value (f64).
+    Double(f64),
+}
+
+impl MetricValue {
+    /// Compares two metric values for approximate equality.
+    ///
+    /// For integer comparisons, uses exact equality.
+    /// For floating-point comparisons, uses epsilon-based comparison.
+    /// Mixed comparisons convert to f64.
+    fn approx_eq(&self, other: &MetricValue) -> bool {
+        match (self, other) {
+            (MetricValue::Int(a), MetricValue::Int(b)) => a == b,
+            (MetricValue::Double(a), MetricValue::Double(b)) => (a - b).abs() < f64::EPSILON,
+            (MetricValue::Int(a), MetricValue::Double(b))
+            | (MetricValue::Double(b), MetricValue::Int(a)) => {
+                ((*a as f64) - b).abs() < f64::EPSILON
+            }
+        }
+    }
+
+    /// Converts the metric value to f64 for comparison.
+    fn as_f64(&self) -> f64 {
+        match self {
+            MetricValue::Int(i) => *i as f64,
+            MetricValue::Double(d) => *d,
+        }
+    }
+}
+
+impl std::fmt::Display for MetricValue {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MetricValue::Int(i) => write!(f, "{}", i),
+            MetricValue::Double(d) => write!(f, "{}", d),
+        }
+    }
+}
+
+impl From<i64> for MetricValue {
+    fn from(v: i64) -> Self {
+        MetricValue::Int(v)
+    }
+}
+
+impl From<i32> for MetricValue {
+    fn from(v: i32) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<i16> for MetricValue {
+    fn from(v: i16) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<i8> for MetricValue {
+    fn from(v: i8) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<u32> for MetricValue {
+    fn from(v: u32) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<u16> for MetricValue {
+    fn from(v: u16) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<u8> for MetricValue {
+    fn from(v: u8) -> Self {
+        MetricValue::Int(v.into())
+    }
+}
+
+impl From<f64> for MetricValue {
+    fn from(v: f64) -> Self {
+        MetricValue::Double(v)
+    }
+}
+
+impl From<f32> for MetricValue {
+    fn from(v: f32) -> Self {
+        MetricValue::Double(v.into())
+    }
+}
+
+/// Internal enum for metric value comparison predicates.
+#[derive(Debug, Clone)]
+pub(crate) enum MetricValuePredicate {
+    Eq(MetricValue),
+    Gt(MetricValue),
+    Gte(MetricValue),
+    Lt(MetricValue),
+    Lte(MetricValue),
+}
+
+impl MetricValuePredicate {
+    fn matches(&self, actual: &MetricValue) -> bool {
+        match self {
+            MetricValuePredicate::Eq(expected) => actual.approx_eq(expected),
+            MetricValuePredicate::Gt(expected) => actual.as_f64() > expected.as_f64(),
+            MetricValuePredicate::Gte(expected) => {
+                actual.as_f64() >= expected.as_f64() || actual.approx_eq(expected)
+            }
+            MetricValuePredicate::Lt(expected) => actual.as_f64() < expected.as_f64(),
+            MetricValuePredicate::Lte(expected) => {
+                actual.as_f64() <= expected.as_f64() || actual.approx_eq(expected)
+            }
+        }
+    }
+
+    fn matches_f64(&self, actual: f64) -> bool {
+        self.matches(&MetricValue::Double(actual))
+    }
+
+    fn format(&self) -> String {
+        match self {
+            MetricValuePredicate::Eq(v) => format!("== {}", v),
+            MetricValuePredicate::Gt(v) => format!("> {}", v),
+            MetricValuePredicate::Gte(v) => format!(">= {}", v),
+            MetricValuePredicate::Lt(v) => format!("< {}", v),
+            MetricValuePredicate::Lte(v) => format!("<= {}", v),
+        }
+    }
+}
+
+/// Internal enum for count (u64) comparison predicates.
+#[derive(Debug, Clone)]
+pub(crate) enum CountPredicate {
+    Eq(u64),
+    Gt(u64),
+    Gte(u64),
+    Lt(u64),
+    Lte(u64),
+}
+
+impl CountPredicate {
+    fn matches(&self, actual: u64) -> bool {
+        match self {
+            CountPredicate::Eq(expected) => actual == *expected,
+            CountPredicate::Gt(expected) => actual > *expected,
+            CountPredicate::Gte(expected) => actual >= *expected,
+            CountPredicate::Lt(expected) => actual < *expected,
+            CountPredicate::Lte(expected) => actual <= *expected,
+        }
+    }
+
+    fn format(&self) -> String {
+        match self {
+            CountPredicate::Eq(v) => format!("== {}", v),
+            CountPredicate::Gt(v) => format!("> {}", v),
+            CountPredicate::Gte(v) => format!(">= {}", v),
+            CountPredicate::Lt(v) => format!("< {}", v),
+            CountPredicate::Lte(v) => format!("<= {}", v),
+        }
+    }
+}
+
+/// Predicate for bucket assertions: (bucket_index, count_predicate).
+#[derive(Debug, Clone)]
+struct BucketPredicate {
+    index: usize,
+    predicate: CountPredicate,
+}
+
+/// Predicate for quantile assertions: (quantile, value_predicate).
+#[derive(Debug, Clone)]
+struct QuantilePredicate {
+    quantile: f64,
+    predicate: MetricValuePredicate,
+}
+
+fn check_attributes(attrs: &[KeyValue], expected: &[(String, Value)]) -> bool {
+    expected.iter().all(|(key, value)| {
+        attrs
+            .iter()
+            .any(|kv| &kv.key == key && any_value_matches(&kv.value, value))
+    })
+}
+
+fn any_value_matches(
+    attr_value: &Option<opentelemetry_proto::tonic::common::v1::AnyValue>,
+    expected: &Value,
+) -> bool {
+    use opentelemetry_proto::tonic::common::v1::any_value::Value as AnyValueInner;
+
+    match attr_value {
+        Some(av) => match &av.value {
+            Some(AnyValueInner::StringValue(s)) => {
+                expected.as_str().map(|exp| s == exp).unwrap_or(false)
+            }
+            Some(AnyValueInner::IntValue(i)) => {
+                expected.as_i64().map(|exp| *i == exp).unwrap_or(false)
+            }
+            Some(AnyValueInner::DoubleValue(d)) => expected
+                .as_f64()
+                .map(|n| (*d - n).abs() < f64::EPSILON)
+                .unwrap_or(false),
+            Some(AnyValueInner::BoolValue(b)) => {
+                expected.as_bool().map(|exp| *b == exp).unwrap_or(false)
+            }
+            _ => false,
+        },
+        None => false,
+    }
+}
+
+fn get_metric_type_name(metric: &Metric) -> &'static str {
+    use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+    match &metric.data {
+        Some(Data::Gauge(_)) => "Gauge",
+        Some(Data::Sum(_)) => "Sum",
+        Some(Data::Histogram(_)) => "Histogram",
+        Some(Data::ExponentialHistogram(_)) => "ExponentialHistogram",
+        Some(Data::Summary(_)) => "Summary",
+        None => "None",
+    }
+}
+
+/// Generates count predicate methods (with_count_eq, with_count_gt, etc.)
+macro_rules! impl_count_predicates {
+    ($field:ident) => {
+        /// Adds a count equality assertion.
+        #[must_use]
+        pub fn with_count_eq(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Eq(count));
+            self
+        }
+
+        /// Adds a count greater-than assertion.
+        #[must_use]
+        pub fn with_count_gt(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Gt(count));
+            self
+        }
+
+        /// Adds a count greater-than-or-equal assertion.
+        #[must_use]
+        pub fn with_count_gte(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Gte(count));
+            self
+        }
+
+        /// Adds a count less-than assertion.
+        #[must_use]
+        pub fn with_count_lt(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Lt(count));
+            self
+        }
+
+        /// Adds a count less-than-or-equal assertion.
+        #[must_use]
+        pub fn with_count_lte(mut self, count: u64) -> Self {
+            self.$field.push(CountPredicate::Lte(count));
+            self
+        }
+    };
+}
+
+/// Generates sum predicate methods (with_sum_eq, with_sum_gt, etc.)
+macro_rules! impl_sum_predicates {
+    ($field:ident) => {
+        /// Adds a sum equality assertion.
+        #[must_use]
+        pub fn with_sum_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Eq(value.into()));
+            self
+        }
+
+        /// Adds a sum greater-than assertion.
+        #[must_use]
+        pub fn with_sum_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Gt(value.into()));
+            self
+        }
+
+        /// Adds a sum greater-than-or-equal assertion.
+        #[must_use]
+        pub fn with_sum_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Gte(value.into()));
+            self
+        }
+
+        /// Adds a sum less-than assertion.
+        #[must_use]
+        pub fn with_sum_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Lt(value.into()));
+            self
+        }
+
+        /// Adds a sum less-than-or-equal assertion.
+        #[must_use]
+        pub fn with_sum_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$field.push(MetricValuePredicate::Lte(value.into()));
+            self
+        }
+    };
+}
+
+/// Generates min/max predicate methods
+macro_rules! impl_min_max_predicates {
+    ($min_field:ident, $max_field:ident) => {
+        /// Adds a min value equality assertion.
+        #[must_use]
+        pub fn with_min_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field.push(MetricValuePredicate::Eq(value.into()));
+            self
+        }
+
+        /// Adds a min value greater-than assertion.
+        #[must_use]
+        pub fn with_min_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field.push(MetricValuePredicate::Gt(value.into()));
+            self
+        }
+
+        /// Adds a min value greater-than-or-equal assertion.
+        #[must_use]
+        pub fn with_min_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field
+                .push(MetricValuePredicate::Gte(value.into()));
+            self
+        }
+
+        /// Adds a min value less-than assertion.
+        #[must_use]
+        pub fn with_min_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field.push(MetricValuePredicate::Lt(value.into()));
+            self
+        }
+
+        /// Adds a min value less-than-or-equal assertion.
+        #[must_use]
+        pub fn with_min_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$min_field
+                .push(MetricValuePredicate::Lte(value.into()));
+            self
+        }
+
+        /// Adds a max value equality assertion.
+        #[must_use]
+        pub fn with_max_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field.push(MetricValuePredicate::Eq(value.into()));
+            self
+        }
+
+        /// Adds a max value greater-than assertion.
+        #[must_use]
+        pub fn with_max_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field.push(MetricValuePredicate::Gt(value.into()));
+            self
+        }
+
+        /// Adds a max value greater-than-or-equal assertion.
+        #[must_use]
+        pub fn with_max_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field
+                .push(MetricValuePredicate::Gte(value.into()));
+            self
+        }
+
+        /// Adds a max value less-than assertion.
+        #[must_use]
+        pub fn with_max_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field.push(MetricValuePredicate::Lt(value.into()));
+            self
+        }
+
+        /// Adds a max value less-than-or-equal assertion.
+        #[must_use]
+        pub fn with_max_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+            self.$max_field
+                .push(MetricValuePredicate::Lte(value.into()));
+            self
+        }
+    };
+}
+
 /// A builder for constructing metric assertions.
 #[derive(Debug)]
 pub struct MetricAssertion<'a> {
@@ -1400,6 +1879,7 @@ pub struct MetricAssertion<'a> {
     attributes: Option<Vec<(String, Value)>>,
     resource_attributes: Option<Vec<(String, Value)>>,
     scope_attributes: Option<Vec<(String, Value)>>,
+    value_predicates: Vec<MetricValuePredicate>,
 }
 
 impl<'a> MetricAssertion<'a> {
@@ -1596,22 +2076,128 @@ impl<'a> MetricAssertion<'a> {
         self
     }
 
+    /// Adds a value equality assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value equal to the
+    /// specified value. For floating-point comparisons, uses epsilon-based equality.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("http_requests_total")
+    ///     .with_value_eq(42)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_eq<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Eq(value.into()));
+        self
+    }
+
+    /// Adds a value greater-than assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value strictly
+    /// greater than the specified value.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("queue_depth")
+    ///     .with_value_gt(0)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_gt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Gt(value.into()));
+        self
+    }
+
+    /// Adds a value greater-than-or-equal assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value greater than
+    /// or equal to the specified value.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("response_time_ms")
+    ///     .with_value_gte(100.0)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_gte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Gte(value.into()));
+        self
+    }
+
+    /// Adds a value less-than assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value strictly
+    /// less than the specified value.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("error_rate")
+    ///     .with_value_lt(0.01)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_lt<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Lt(value.into()));
+        self
+    }
+
+    /// Adds a value less-than-or-equal assertion for Gauge or Sum metrics.
+    ///
+    /// The metric must have at least one data point with a value less than
+    /// or equal to the specified value.
+    ///
+    /// # Example
+    ///
+    /// ```no_run
+    /// # use mock_collector::MockCollector;
+    /// # let collector = MockCollector::new();
+    /// collector
+    ///     .expect_metric_with_name("response_time_ms")
+    ///     .with_value_lte(500.0)
+    ///     .assert_exists();
+    /// ```
+    #[must_use]
+    pub fn with_value_lte<V: Into<MetricValue>>(mut self, value: V) -> Self {
+        self.value_predicates
+            .push(MetricValuePredicate::Lte(value.into()));
+        self
+    }
+
     fn matches_any(&self) -> bool {
         self.metrics.iter().any(|m| self.matches(m))
     }
 
     fn matches(&self, metric: &TestMetric) -> bool {
-        // Check name
         if let Some(ref expected_name) = self.name
             && &metric.metric.name != expected_name
         {
             return false;
         }
 
-        // Check metric attributes (data point attributes)
         if let Some(ref expected_attrs) = self.attributes {
-            // Metrics have data points with attributes
-            // We check if any data point has the expected attributes
             let has_matching_data_point =
                 Self::check_metric_data_points(&metric.metric, expected_attrs);
             if !has_matching_data_point {
@@ -1619,27 +2205,74 @@ impl<'a> MetricAssertion<'a> {
             }
         }
 
-        // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes
             && !Self::check_attributes(&metric.resource_attrs, expected_attrs)
         {
             return false;
         }
 
-        // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes
             && !Self::check_attributes(&metric.scope_attrs, expected_attrs)
         {
             return false;
         }
 
+        if !self.value_predicates.is_empty() {
+            let values = Self::get_data_point_values(&metric.metric);
+            if values.is_empty() {
+                return false;
+            }
+            let has_matching_value = values.iter().any(|actual| {
+                self.value_predicates
+                    .iter()
+                    .all(|pred| pred.matches(actual))
+            });
+            if !has_matching_value {
+                return false;
+            }
+        }
+
         true
+    }
+
+    fn get_data_point_values(metric: &Metric) -> Vec<MetricValue> {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+        use opentelemetry_proto::tonic::metrics::v1::number_data_point::Value as NumberValue;
+
+        let mut values = Vec::new();
+
+        if let Some(ref data) = metric.data {
+            match data {
+                Data::Gauge(gauge) => {
+                    for dp in &gauge.data_points {
+                        if let Some(ref v) = dp.value {
+                            match v {
+                                NumberValue::AsInt(i) => values.push(MetricValue::Int(*i)),
+                                NumberValue::AsDouble(d) => values.push(MetricValue::Double(*d)),
+                            }
+                        }
+                    }
+                }
+                Data::Sum(sum) => {
+                    for dp in &sum.data_points {
+                        if let Some(ref v) = dp.value {
+                            match v {
+                                NumberValue::AsInt(i) => values.push(MetricValue::Int(*i)),
+                                NumberValue::AsDouble(d) => values.push(MetricValue::Double(*d)),
+                            }
+                        }
+                    }
+                }
+                Data::Histogram(_) | Data::ExponentialHistogram(_) | Data::Summary(_) => {}
+            }
+        }
+
+        values
     }
 
     fn check_metric_data_points(metric: &Metric, expected: &[(String, Value)]) -> bool {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data;
 
-        // Check data points based on metric type
         if let Some(ref data) = metric.data {
             match data {
                 Data::Gauge(gauge) => gauge
@@ -1717,6 +2350,10 @@ impl<'a> MetricAssertion<'a> {
         if let Some(scope_attrs) = &self.scope_attributes {
             criteria.push(format!("scope_attributes={:?}", scope_attrs));
         }
+        if !self.value_predicates.is_empty() {
+            let preds: Vec<String> = self.value_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("value({})", preds.join(" AND ")));
+        }
         criteria.join(", ")
     }
 
@@ -1761,6 +2398,13 @@ impl<'a> MetricAssertion<'a> {
             }
         }
 
+        if !self.value_predicates.is_empty() {
+            msg.push_str("  value:\n");
+            for pred in &self.value_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
         msg.push_str(&format!(
             "\nFound {} metric(s) in collector:\n",
             self.metrics.len()
@@ -1770,7 +2414,12 @@ impl<'a> MetricAssertion<'a> {
             for (idx, metric) in self.metrics.iter().take(10).enumerate() {
                 msg.push_str(&format!("  [{}] name=\"{}\"", idx, metric.metric.name));
 
-                // Show a sample of data point attributes if available
+                let values = Self::get_data_point_values(&metric.metric);
+                if !values.is_empty() {
+                    let value_strs: Vec<String> = values.iter().map(|v| v.to_string()).collect();
+                    msg.push_str(&format!(", values=[{}]", value_strs.join(", ")));
+                }
+
                 if let Some(ref data) = metric.metric.data {
                     use opentelemetry_proto::tonic::metrics::v1::metric::Data;
                     let sample_attrs = match data {
@@ -1810,6 +2459,1520 @@ impl<'a> MetricAssertion<'a> {
             if self.metrics.len() > 10 {
                 msg.push_str(&format!("  ... and {} more\n", self.metrics.len() - 10));
             }
+        }
+
+        msg
+    }
+}
+
+/// A builder for constructing histogram metric assertions.
+///
+/// Provides type-specific assertions for histogram data points, including
+/// count, sum, min, max, and bucket-level assertions.
+#[derive(Debug)]
+pub struct HistogramAssertion<'a> {
+    metrics: &'a [TestMetric],
+    name: Option<String>,
+    attributes: Option<Vec<(String, Value)>>,
+    resource_attributes: Option<Vec<(String, Value)>>,
+    scope_attributes: Option<Vec<(String, Value)>>,
+    count_predicates: Vec<CountPredicate>,
+    sum_predicates: Vec<MetricValuePredicate>,
+    min_predicates: Vec<MetricValuePredicate>,
+    max_predicates: Vec<MetricValuePredicate>,
+    bucket_predicates: Vec<BucketPredicate>,
+}
+
+impl<'a> HistogramAssertion<'a> {
+    /// Asserts that at least one histogram data point matches all specified criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics with a descriptive message if no matching histogram is found.
+    #[track_caller]
+    pub fn assert_exists(&self) {
+        if !self.matches_any() {
+            panic!("{}", self.build_error_message());
+        }
+    }
+
+    /// Asserts that no histogram data points match the specified criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any histograms match the criteria.
+    #[track_caller]
+    pub fn assert_not_exists(&self) {
+        if self.matches_any() {
+            panic!(
+                "Expected no histograms to match, but found {} matching histogram(s).\nCriteria: {}",
+                self.count(),
+                self.format_criteria()
+            );
+        }
+    }
+
+    /// Asserts that exactly the specified number of histogram data points match the criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the count doesn't match exactly.
+    #[track_caller]
+    pub fn assert_count(&self, expected: usize) {
+        let actual = self.count();
+        if actual != expected {
+            panic!(
+                "Expected {} matching histogram(s), but found {}.\nCriteria: {}\n\n{}",
+                expected,
+                actual,
+                self.format_criteria(),
+                self.format_matching_metrics()
+            );
+        }
+    }
+
+    /// Asserts that at least the specified number of histogram data points match the criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if fewer histograms match than expected.
+    #[track_caller]
+    pub fn assert_at_least(&self, min: usize) {
+        let actual = self.count();
+        if actual < min {
+            panic!(
+                "Expected at least {} matching histogram(s), but found {}.\nCriteria: {}",
+                min,
+                actual,
+                self.format_criteria()
+            );
+        }
+    }
+
+    /// Asserts that at most the specified number of histogram data points match the criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if more histograms match than expected.
+    #[track_caller]
+    pub fn assert_at_most(&self, max: usize) {
+        let actual = self.count();
+        if actual > max {
+            panic!(
+                "Expected at most {} matching histogram(s), but found {}.\nCriteria: {}",
+                max,
+                actual,
+                self.format_criteria()
+            );
+        }
+    }
+
+    /// Returns all histogram metrics that match the specified criteria.
+    #[must_use = "the matching items should be used"]
+    pub fn get_all(&self) -> Vec<&TestMetric> {
+        self.metrics.iter().filter(|m| self.matches(m)).collect()
+    }
+
+    /// Returns the count of histogram metrics matching the criteria.
+    #[must_use = "the count should be used"]
+    pub fn count(&self) -> usize {
+        self.metrics.iter().filter(|m| self.matches(m)).count()
+    }
+
+    /// Adds data point attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_attributes<I, K, V>(mut self, attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single data point attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Adds resource attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_resource_attributes<I, K, V>(mut self, resource_attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = resource_attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.resource_attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single resource attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_resource_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.resource_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Adds scope attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_scope_attributes<I, K, V>(mut self, scope_attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = scope_attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.scope_attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single scope attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_scope_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.scope_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Adds a bucket count equality assertion for a specific bucket index.
+    #[must_use]
+    pub fn with_bucket_count_eq(mut self, index: usize, count: u64) -> Self {
+        self.bucket_predicates.push(BucketPredicate {
+            index,
+            predicate: CountPredicate::Eq(count),
+        });
+        self
+    }
+
+    /// Adds a bucket count greater-than assertion for a specific bucket index.
+    #[must_use]
+    pub fn with_bucket_count_gt(mut self, index: usize, count: u64) -> Self {
+        self.bucket_predicates.push(BucketPredicate {
+            index,
+            predicate: CountPredicate::Gt(count),
+        });
+        self
+    }
+
+    /// Adds a bucket count greater-than-or-equal assertion for a specific bucket index.
+    #[must_use]
+    pub fn with_bucket_count_gte(mut self, index: usize, count: u64) -> Self {
+        self.bucket_predicates.push(BucketPredicate {
+            index,
+            predicate: CountPredicate::Gte(count),
+        });
+        self
+    }
+
+    /// Adds a bucket count less-than assertion for a specific bucket index.
+    #[must_use]
+    pub fn with_bucket_count_lt(mut self, index: usize, count: u64) -> Self {
+        self.bucket_predicates.push(BucketPredicate {
+            index,
+            predicate: CountPredicate::Lt(count),
+        });
+        self
+    }
+
+    /// Adds a bucket count less-than-or-equal assertion for a specific bucket index.
+    #[must_use]
+    pub fn with_bucket_count_lte(mut self, index: usize, count: u64) -> Self {
+        self.bucket_predicates.push(BucketPredicate {
+            index,
+            predicate: CountPredicate::Lte(count),
+        });
+        self
+    }
+
+    impl_count_predicates!(count_predicates);
+    impl_sum_predicates!(sum_predicates);
+    impl_min_max_predicates!(min_predicates, max_predicates);
+
+    fn matches_any(&self) -> bool {
+        self.metrics.iter().any(|m| self.matches(m))
+    }
+
+    fn matches(&self, metric: &TestMetric) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+
+        if let Some(ref expected_name) = self.name
+            && &metric.metric.name != expected_name
+        {
+            return false;
+        }
+
+        let histogram = match &metric.metric.data {
+            Some(Data::Histogram(h)) => h,
+            _ => return false,
+        };
+
+        if let Some(ref expected_attrs) = self.resource_attributes
+            && !check_attributes(&metric.resource_attrs, expected_attrs)
+        {
+            return false;
+        }
+
+        if let Some(ref expected_attrs) = self.scope_attributes
+            && !check_attributes(&metric.scope_attrs, expected_attrs)
+        {
+            return false;
+        }
+
+        histogram.data_points.iter().any(|dp| {
+            if let Some(ref expected_attrs) = self.attributes
+                && !check_attributes(&dp.attributes, expected_attrs)
+            {
+                return false;
+            }
+
+            if !self
+                .count_predicates
+                .iter()
+                .all(|pred| pred.matches(dp.count))
+            {
+                return false;
+            }
+
+            if !self.sum_predicates.is_empty() {
+                match dp.sum {
+                    Some(sum) => {
+                        if !self.sum_predicates.iter().all(|pred| pred.matches_f64(sum)) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+
+            if !self.min_predicates.is_empty() {
+                match dp.min {
+                    Some(min) => {
+                        if !self.min_predicates.iter().all(|pred| pred.matches_f64(min)) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+
+            if !self.max_predicates.is_empty() {
+                match dp.max {
+                    Some(max) => {
+                        if !self.max_predicates.iter().all(|pred| pred.matches_f64(max)) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+
+            for bucket_pred in &self.bucket_predicates {
+                if let Some(&bucket_count) = dp.bucket_counts.get(bucket_pred.index) {
+                    if !bucket_pred.predicate.matches(bucket_count) {
+                        return false;
+                    }
+                } else {
+                    return false;
+                }
+            }
+
+            true
+        })
+    }
+
+    fn format_criteria(&self) -> String {
+        let mut criteria = Vec::new();
+        if let Some(name) = &self.name {
+            criteria.push(format!("name={:?}", name));
+        }
+        if let Some(attrs) = &self.attributes {
+            criteria.push(format!("attributes={:?}", attrs));
+        }
+        if let Some(res_attrs) = &self.resource_attributes {
+            criteria.push(format!("resource_attributes={:?}", res_attrs));
+        }
+        if let Some(scope_attrs) = &self.scope_attributes {
+            criteria.push(format!("scope_attributes={:?}", scope_attrs));
+        }
+        if !self.count_predicates.is_empty() {
+            let preds: Vec<String> = self.count_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("count({})", preds.join(" AND ")));
+        }
+        if !self.sum_predicates.is_empty() {
+            let preds: Vec<String> = self.sum_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("sum({})", preds.join(" AND ")));
+        }
+        if !self.min_predicates.is_empty() {
+            let preds: Vec<String> = self.min_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("min({})", preds.join(" AND ")));
+        }
+        if !self.max_predicates.is_empty() {
+            let preds: Vec<String> = self.max_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("max({})", preds.join(" AND ")));
+        }
+        for bp in &self.bucket_predicates {
+            criteria.push(format!("bucket[{}]({})", bp.index, bp.predicate.format()));
+        }
+        criteria.join(", ")
+    }
+
+    fn format_matching_metrics(&self) -> String {
+        let matching: Vec<_> = self.get_all();
+        if matching.is_empty() {
+            return String::new();
+        }
+
+        let mut output = String::from("Matching histograms:\n");
+        for (idx, metric) in matching.iter().enumerate() {
+            output.push_str(&format!("  [{}] name=\"{}\"\n", idx, metric.metric.name));
+        }
+        output
+    }
+
+    fn build_error_message(&self) -> String {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+
+        let mut msg = String::from("No histograms matched the assertion.\n\nExpected:\n");
+
+        if let Some(ref name) = self.name {
+            msg.push_str(&format!("  name: \"{}\"\n", name));
+        }
+
+        if let Some(ref attrs) = self.attributes {
+            msg.push_str("  attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if let Some(ref attrs) = self.resource_attributes {
+            msg.push_str("  resource_attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if let Some(ref attrs) = self.scope_attributes {
+            msg.push_str("  scope_attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if !self.count_predicates.is_empty() {
+            msg.push_str("  count:\n");
+            for pred in &self.count_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        if !self.sum_predicates.is_empty() {
+            msg.push_str("  sum:\n");
+            for pred in &self.sum_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        if !self.min_predicates.is_empty() {
+            msg.push_str("  min:\n");
+            for pred in &self.min_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        if !self.max_predicates.is_empty() {
+            msg.push_str("  max:\n");
+            for pred in &self.max_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        for bp in &self.bucket_predicates {
+            msg.push_str(&format!(
+                "  bucket[{}]: {}\n",
+                bp.index,
+                bp.predicate.format()
+            ));
+        }
+
+        let name_matches: Vec<_> = self
+            .metrics
+            .iter()
+            .filter(|m| {
+                self.name
+                    .as_ref()
+                    .map(|n| &m.metric.name == n)
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        msg.push_str(&format!(
+            "\nFound {} metric(s) named {:?}:\n",
+            name_matches.len(),
+            self.name.as_deref().unwrap_or("*")
+        ));
+
+        for (idx, metric) in name_matches.iter().take(10).enumerate() {
+            let type_name = get_metric_type_name(&metric.metric);
+            msg.push_str(&format!("  [{}] type={}", idx, type_name));
+
+            if let Some(Data::Histogram(h)) = &metric.metric.data
+                && let Some(dp) = h.data_points.first()
+            {
+                msg.push_str(&format!(", count={}", dp.count));
+                if let Some(sum) = dp.sum {
+                    msg.push_str(&format!(", sum={}", sum));
+                }
+            }
+
+            msg.push('\n');
+        }
+
+        if name_matches.len() > 10 {
+            msg.push_str(&format!("  ... and {} more\n", name_matches.len() - 10));
+        }
+
+        if name_matches.iter().any(|m| {
+            !matches!(
+                &m.metric.data,
+                Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Histogram(_))
+            )
+        }) {
+            msg.push_str("\nHint: Use expect_metric_with_name() for Sum/Gauge metrics, or check the metric type.\n");
+        }
+
+        msg
+    }
+}
+
+/// A builder for constructing exponential histogram metric assertions.
+///
+/// Provides type-specific assertions for exponential histogram data points, including
+/// count, sum, min, max, zero_count, and scale assertions.
+#[derive(Debug)]
+pub struct ExponentialHistogramAssertion<'a> {
+    metrics: &'a [TestMetric],
+    name: Option<String>,
+    attributes: Option<Vec<(String, Value)>>,
+    resource_attributes: Option<Vec<(String, Value)>>,
+    scope_attributes: Option<Vec<(String, Value)>>,
+    count_predicates: Vec<CountPredicate>,
+    sum_predicates: Vec<MetricValuePredicate>,
+    min_predicates: Vec<MetricValuePredicate>,
+    max_predicates: Vec<MetricValuePredicate>,
+    zero_count_predicates: Vec<CountPredicate>,
+    scale_predicate: Option<i32>,
+}
+
+impl<'a> ExponentialHistogramAssertion<'a> {
+    /// Asserts that at least one exponential histogram data point matches all specified criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics with a descriptive message if no matching exponential histogram is found.
+    #[track_caller]
+    pub fn assert_exists(&self) {
+        if !self.matches_any() {
+            panic!("{}", self.build_error_message());
+        }
+    }
+
+    /// Asserts that no exponential histogram data points match the specified criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any exponential histograms match the criteria.
+    #[track_caller]
+    pub fn assert_not_exists(&self) {
+        if self.matches_any() {
+            panic!(
+                "Expected no exponential histograms to match, but found {} matching.\nCriteria: {}",
+                self.count(),
+                self.format_criteria()
+            );
+        }
+    }
+
+    /// Asserts that exactly the specified number of exponential histogram data points match.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the count doesn't match exactly.
+    #[track_caller]
+    pub fn assert_count(&self, expected: usize) {
+        let actual = self.count();
+        if actual != expected {
+            panic!(
+                "Expected {} matching exponential histogram(s), but found {}.\nCriteria: {}\n\n{}",
+                expected,
+                actual,
+                self.format_criteria(),
+                self.format_matching_metrics()
+            );
+        }
+    }
+
+    /// Asserts that at least the specified number of exponential histograms match.
+    ///
+    /// # Panics
+    ///
+    /// Panics if fewer match than expected.
+    #[track_caller]
+    pub fn assert_at_least(&self, min: usize) {
+        let actual = self.count();
+        if actual < min {
+            panic!(
+                "Expected at least {} matching exponential histogram(s), but found {}.\nCriteria: {}",
+                min,
+                actual,
+                self.format_criteria()
+            );
+        }
+    }
+
+    /// Asserts that at most the specified number of exponential histograms match.
+    ///
+    /// # Panics
+    ///
+    /// Panics if more match than expected.
+    #[track_caller]
+    pub fn assert_at_most(&self, max: usize) {
+        let actual = self.count();
+        if actual > max {
+            panic!(
+                "Expected at most {} matching exponential histogram(s), but found {}.\nCriteria: {}",
+                max,
+                actual,
+                self.format_criteria()
+            );
+        }
+    }
+
+    /// Returns all exponential histogram metrics that match the specified criteria.
+    #[must_use = "the matching items should be used"]
+    pub fn get_all(&self) -> Vec<&TestMetric> {
+        self.metrics.iter().filter(|m| self.matches(m)).collect()
+    }
+
+    /// Returns the count of exponential histogram metrics matching the criteria.
+    #[must_use = "the count should be used"]
+    pub fn count(&self) -> usize {
+        self.metrics.iter().filter(|m| self.matches(m)).count()
+    }
+
+    /// Adds data point attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_attributes<I, K, V>(mut self, attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single data point attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Adds resource attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_resource_attributes<I, K, V>(mut self, resource_attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = resource_attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.resource_attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single resource attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_resource_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.resource_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Adds scope attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_scope_attributes<I, K, V>(mut self, scope_attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = scope_attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.scope_attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single scope attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_scope_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.scope_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Adds a zero count equality assertion.
+    #[must_use]
+    pub fn with_zero_count_eq(mut self, count: u64) -> Self {
+        self.zero_count_predicates.push(CountPredicate::Eq(count));
+        self
+    }
+
+    /// Adds a zero count greater-than assertion.
+    #[must_use]
+    pub fn with_zero_count_gt(mut self, count: u64) -> Self {
+        self.zero_count_predicates.push(CountPredicate::Gt(count));
+        self
+    }
+
+    /// Adds a zero count greater-than-or-equal assertion.
+    #[must_use]
+    pub fn with_zero_count_gte(mut self, count: u64) -> Self {
+        self.zero_count_predicates.push(CountPredicate::Gte(count));
+        self
+    }
+
+    /// Adds a zero count less-than assertion.
+    #[must_use]
+    pub fn with_zero_count_lt(mut self, count: u64) -> Self {
+        self.zero_count_predicates.push(CountPredicate::Lt(count));
+        self
+    }
+
+    /// Adds a zero count less-than-or-equal assertion.
+    #[must_use]
+    pub fn with_zero_count_lte(mut self, count: u64) -> Self {
+        self.zero_count_predicates.push(CountPredicate::Lte(count));
+        self
+    }
+
+    /// Adds a scale equality assertion.
+    #[must_use]
+    pub fn with_scale_eq(mut self, scale: i32) -> Self {
+        self.scale_predicate = Some(scale);
+        self
+    }
+
+    impl_count_predicates!(count_predicates);
+    impl_sum_predicates!(sum_predicates);
+    impl_min_max_predicates!(min_predicates, max_predicates);
+
+    fn matches_any(&self) -> bool {
+        self.metrics.iter().any(|m| self.matches(m))
+    }
+
+    fn matches(&self, metric: &TestMetric) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+
+        if let Some(ref expected_name) = self.name
+            && &metric.metric.name != expected_name
+        {
+            return false;
+        }
+
+        let exp_histogram = match &metric.metric.data {
+            Some(Data::ExponentialHistogram(h)) => h,
+            _ => return false,
+        };
+
+        if let Some(ref expected_attrs) = self.resource_attributes
+            && !check_attributes(&metric.resource_attrs, expected_attrs)
+        {
+            return false;
+        }
+
+        if let Some(ref expected_attrs) = self.scope_attributes
+            && !check_attributes(&metric.scope_attrs, expected_attrs)
+        {
+            return false;
+        }
+
+        exp_histogram.data_points.iter().any(|dp| {
+            if let Some(ref expected_attrs) = self.attributes
+                && !check_attributes(&dp.attributes, expected_attrs)
+            {
+                return false;
+            }
+
+            if !self
+                .count_predicates
+                .iter()
+                .all(|pred| pred.matches(dp.count))
+            {
+                return false;
+            }
+
+            if !self.sum_predicates.is_empty() {
+                match dp.sum {
+                    Some(sum) => {
+                        if !self.sum_predicates.iter().all(|pred| pred.matches_f64(sum)) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+
+            if !self.min_predicates.is_empty() {
+                match dp.min {
+                    Some(min) => {
+                        if !self.min_predicates.iter().all(|pred| pred.matches_f64(min)) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+
+            if !self.max_predicates.is_empty() {
+                match dp.max {
+                    Some(max) => {
+                        if !self.max_predicates.iter().all(|pred| pred.matches_f64(max)) {
+                            return false;
+                        }
+                    }
+                    None => return false,
+                }
+            }
+
+            if !self
+                .zero_count_predicates
+                .iter()
+                .all(|pred| pred.matches(dp.zero_count))
+            {
+                return false;
+            }
+
+            if let Some(expected_scale) = self.scale_predicate
+                && dp.scale != expected_scale
+            {
+                return false;
+            }
+
+            true
+        })
+    }
+
+    fn format_criteria(&self) -> String {
+        let mut criteria = Vec::new();
+        if let Some(name) = &self.name {
+            criteria.push(format!("name={:?}", name));
+        }
+        if let Some(attrs) = &self.attributes {
+            criteria.push(format!("attributes={:?}", attrs));
+        }
+        if let Some(res_attrs) = &self.resource_attributes {
+            criteria.push(format!("resource_attributes={:?}", res_attrs));
+        }
+        if let Some(scope_attrs) = &self.scope_attributes {
+            criteria.push(format!("scope_attributes={:?}", scope_attrs));
+        }
+        if !self.count_predicates.is_empty() {
+            let preds: Vec<String> = self.count_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("count({})", preds.join(" AND ")));
+        }
+        if !self.sum_predicates.is_empty() {
+            let preds: Vec<String> = self.sum_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("sum({})", preds.join(" AND ")));
+        }
+        if !self.min_predicates.is_empty() {
+            let preds: Vec<String> = self.min_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("min({})", preds.join(" AND ")));
+        }
+        if !self.max_predicates.is_empty() {
+            let preds: Vec<String> = self.max_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("max({})", preds.join(" AND ")));
+        }
+        if !self.zero_count_predicates.is_empty() {
+            let preds: Vec<String> = self
+                .zero_count_predicates
+                .iter()
+                .map(|p| p.format())
+                .collect();
+            criteria.push(format!("zero_count({})", preds.join(" AND ")));
+        }
+        if let Some(scale) = self.scale_predicate {
+            criteria.push(format!("scale == {}", scale));
+        }
+        criteria.join(", ")
+    }
+
+    fn format_matching_metrics(&self) -> String {
+        let matching: Vec<_> = self.get_all();
+        if matching.is_empty() {
+            return String::new();
+        }
+
+        let mut output = String::from("Matching exponential histograms:\n");
+        for (idx, metric) in matching.iter().enumerate() {
+            output.push_str(&format!("  [{}] name=\"{}\"\n", idx, metric.metric.name));
+        }
+        output
+    }
+
+    fn build_error_message(&self) -> String {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+
+        let mut msg =
+            String::from("No exponential histograms matched the assertion.\n\nExpected:\n");
+
+        if let Some(ref name) = self.name {
+            msg.push_str(&format!("  name: \"{}\"\n", name));
+        }
+
+        if let Some(ref attrs) = self.attributes {
+            msg.push_str("  attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if let Some(ref attrs) = self.resource_attributes {
+            msg.push_str("  resource_attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if let Some(ref attrs) = self.scope_attributes {
+            msg.push_str("  scope_attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if !self.count_predicates.is_empty() {
+            msg.push_str("  count:\n");
+            for pred in &self.count_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        if !self.sum_predicates.is_empty() {
+            msg.push_str("  sum:\n");
+            for pred in &self.sum_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        if !self.min_predicates.is_empty() {
+            msg.push_str("  min:\n");
+            for pred in &self.min_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        if !self.max_predicates.is_empty() {
+            msg.push_str("  max:\n");
+            for pred in &self.max_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        if !self.zero_count_predicates.is_empty() {
+            msg.push_str("  zero_count:\n");
+            for pred in &self.zero_count_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        if let Some(scale) = self.scale_predicate {
+            msg.push_str(&format!("  scale: == {}\n", scale));
+        }
+
+        let name_matches: Vec<_> = self
+            .metrics
+            .iter()
+            .filter(|m| {
+                self.name
+                    .as_ref()
+                    .map(|n| &m.metric.name == n)
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        msg.push_str(&format!(
+            "\nFound {} metric(s) named {:?}:\n",
+            name_matches.len(),
+            self.name.as_deref().unwrap_or("*")
+        ));
+
+        for (idx, metric) in name_matches.iter().take(10).enumerate() {
+            let type_name = get_metric_type_name(&metric.metric);
+            msg.push_str(&format!("  [{}] type={}", idx, type_name));
+
+            if let Some(Data::ExponentialHistogram(h)) = &metric.metric.data
+                && let Some(dp) = h.data_points.first()
+            {
+                msg.push_str(&format!(", count={}", dp.count));
+                if let Some(sum) = dp.sum {
+                    msg.push_str(&format!(", sum={}", sum));
+                }
+                msg.push_str(&format!(
+                    ", zero_count={}, scale={}",
+                    dp.zero_count, dp.scale
+                ));
+            }
+
+            msg.push('\n');
+        }
+
+        if name_matches.len() > 10 {
+            msg.push_str(&format!("  ... and {} more\n", name_matches.len() - 10));
+        }
+
+        if name_matches.iter().any(|m| {
+            !matches!(
+                &m.metric.data,
+                Some(
+                    opentelemetry_proto::tonic::metrics::v1::metric::Data::ExponentialHistogram(_)
+                )
+            )
+        }) {
+            msg.push_str("\nHint: Use expect_histogram() for regular histograms, or expect_metric_with_name() for Sum/Gauge metrics.\n");
+        }
+
+        msg
+    }
+}
+
+/// A builder for constructing summary metric assertions.
+///
+/// Provides type-specific assertions for summary data points, including
+/// count, sum, and quantile-level assertions.
+#[derive(Debug)]
+pub struct SummaryAssertion<'a> {
+    metrics: &'a [TestMetric],
+    name: Option<String>,
+    attributes: Option<Vec<(String, Value)>>,
+    resource_attributes: Option<Vec<(String, Value)>>,
+    scope_attributes: Option<Vec<(String, Value)>>,
+    count_predicates: Vec<CountPredicate>,
+    sum_predicates: Vec<MetricValuePredicate>,
+    quantile_predicates: Vec<QuantilePredicate>,
+}
+
+impl<'a> SummaryAssertion<'a> {
+    /// Asserts that at least one summary data point matches all specified criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics with a descriptive message if no matching summary is found.
+    #[track_caller]
+    pub fn assert_exists(&self) {
+        if !self.matches_any() {
+            panic!("{}", self.build_error_message());
+        }
+    }
+
+    /// Asserts that no summary data points match the specified criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if any summaries match the criteria.
+    #[track_caller]
+    pub fn assert_not_exists(&self) {
+        if self.matches_any() {
+            panic!(
+                "Expected no summaries to match, but found {} matching summary(ies).\nCriteria: {}",
+                self.count(),
+                self.format_criteria()
+            );
+        }
+    }
+
+    /// Asserts that exactly the specified number of summary data points match the criteria.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the count doesn't match exactly.
+    #[track_caller]
+    pub fn assert_count(&self, expected: usize) {
+        let actual = self.count();
+        if actual != expected {
+            panic!(
+                "Expected {} matching summary(ies), but found {}.\nCriteria: {}\n\n{}",
+                expected,
+                actual,
+                self.format_criteria(),
+                self.format_matching_metrics()
+            );
+        }
+    }
+
+    /// Asserts that at least the specified number of summary data points match.
+    ///
+    /// # Panics
+    ///
+    /// Panics if fewer summaries match than expected.
+    #[track_caller]
+    pub fn assert_at_least(&self, min: usize) {
+        let actual = self.count();
+        if actual < min {
+            panic!(
+                "Expected at least {} matching summary(ies), but found {}.\nCriteria: {}",
+                min,
+                actual,
+                self.format_criteria()
+            );
+        }
+    }
+
+    /// Asserts that at most the specified number of summary data points match.
+    ///
+    /// # Panics
+    ///
+    /// Panics if more summaries match than expected.
+    #[track_caller]
+    pub fn assert_at_most(&self, max: usize) {
+        let actual = self.count();
+        if actual > max {
+            panic!(
+                "Expected at most {} matching summary(ies), but found {}.\nCriteria: {}",
+                max,
+                actual,
+                self.format_criteria()
+            );
+        }
+    }
+
+    /// Returns all summary metrics that match the specified criteria.
+    #[must_use = "the matching items should be used"]
+    pub fn get_all(&self) -> Vec<&TestMetric> {
+        self.metrics.iter().filter(|m| self.matches(m)).collect()
+    }
+
+    /// Returns the count of summary metrics matching the criteria.
+    #[must_use = "the count should be used"]
+    pub fn count(&self) -> usize {
+        self.metrics.iter().filter(|m| self.matches(m)).count()
+    }
+
+    /// Adds data point attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_attributes<I, K, V>(mut self, attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single data point attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Adds resource attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_resource_attributes<I, K, V>(mut self, resource_attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = resource_attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.resource_attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single resource attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_resource_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.resource_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Adds scope attribute assertions to the criteria.
+    #[must_use]
+    pub fn with_scope_attributes<I, K, V>(mut self, scope_attributes: I) -> Self
+    where
+        I: IntoIterator<Item = (K, V)>,
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        let attrs: Vec<(String, Value)> = scope_attributes
+            .into_iter()
+            .map(|(k, v)| (k.into(), v.into()))
+            .collect();
+        self.scope_attributes = Some(attrs);
+        self
+    }
+
+    /// Adds a single scope attribute criterion to the assertion.
+    #[must_use]
+    pub fn with_scope_attribute<K, V>(mut self, key: K, value: V) -> Self
+    where
+        K: Into<String>,
+        V: Into<Value>,
+    {
+        self.scope_attributes
+            .get_or_insert_with(Vec::new)
+            .push((key.into(), value.into()));
+        self
+    }
+
+    /// Adds a quantile value equality assertion.
+    ///
+    /// Asserts that the quantile value (e.g., p50, p99) equals the expected value.
+    #[must_use]
+    pub fn with_quantile_eq(mut self, quantile: f64, value: f64) -> Self {
+        self.quantile_predicates.push(QuantilePredicate {
+            quantile,
+            predicate: MetricValuePredicate::Eq(MetricValue::Double(value)),
+        });
+        self
+    }
+
+    /// Adds a quantile value greater-than assertion.
+    #[must_use]
+    pub fn with_quantile_gt(mut self, quantile: f64, value: f64) -> Self {
+        self.quantile_predicates.push(QuantilePredicate {
+            quantile,
+            predicate: MetricValuePredicate::Gt(MetricValue::Double(value)),
+        });
+        self
+    }
+
+    /// Adds a quantile value greater-than-or-equal assertion.
+    #[must_use]
+    pub fn with_quantile_gte(mut self, quantile: f64, value: f64) -> Self {
+        self.quantile_predicates.push(QuantilePredicate {
+            quantile,
+            predicate: MetricValuePredicate::Gte(MetricValue::Double(value)),
+        });
+        self
+    }
+
+    /// Adds a quantile value less-than assertion.
+    #[must_use]
+    pub fn with_quantile_lt(mut self, quantile: f64, value: f64) -> Self {
+        self.quantile_predicates.push(QuantilePredicate {
+            quantile,
+            predicate: MetricValuePredicate::Lt(MetricValue::Double(value)),
+        });
+        self
+    }
+
+    /// Adds a quantile value less-than-or-equal assertion.
+    #[must_use]
+    pub fn with_quantile_lte(mut self, quantile: f64, value: f64) -> Self {
+        self.quantile_predicates.push(QuantilePredicate {
+            quantile,
+            predicate: MetricValuePredicate::Lte(MetricValue::Double(value)),
+        });
+        self
+    }
+
+    impl_count_predicates!(count_predicates);
+    impl_sum_predicates!(sum_predicates);
+
+    fn matches_any(&self) -> bool {
+        self.metrics.iter().any(|m| self.matches(m))
+    }
+
+    fn matches(&self, metric: &TestMetric) -> bool {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+
+        if let Some(ref expected_name) = self.name
+            && &metric.metric.name != expected_name
+        {
+            return false;
+        }
+
+        let summary = match &metric.metric.data {
+            Some(Data::Summary(s)) => s,
+            _ => return false,
+        };
+
+        if let Some(ref expected_attrs) = self.resource_attributes
+            && !check_attributes(&metric.resource_attrs, expected_attrs)
+        {
+            return false;
+        }
+
+        if let Some(ref expected_attrs) = self.scope_attributes
+            && !check_attributes(&metric.scope_attrs, expected_attrs)
+        {
+            return false;
+        }
+
+        summary.data_points.iter().any(|dp| {
+            if let Some(ref expected_attrs) = self.attributes
+                && !check_attributes(&dp.attributes, expected_attrs)
+            {
+                return false;
+            }
+
+            if !self
+                .count_predicates
+                .iter()
+                .all(|pred| pred.matches(dp.count))
+            {
+                return false;
+            }
+
+            if !self.sum_predicates.is_empty()
+                && !self
+                    .sum_predicates
+                    .iter()
+                    .all(|pred| pred.matches_f64(dp.sum))
+            {
+                return false;
+            }
+
+            for qp in &self.quantile_predicates {
+                let quantile_match = dp.quantile_values.iter().any(|qv| {
+                    (qv.quantile - qp.quantile).abs() < f64::EPSILON
+                        && qp.predicate.matches_f64(qv.value)
+                });
+                if !quantile_match {
+                    return false;
+                }
+            }
+
+            true
+        })
+    }
+
+    fn format_criteria(&self) -> String {
+        let mut criteria = Vec::new();
+        if let Some(name) = &self.name {
+            criteria.push(format!("name={:?}", name));
+        }
+        if let Some(attrs) = &self.attributes {
+            criteria.push(format!("attributes={:?}", attrs));
+        }
+        if let Some(res_attrs) = &self.resource_attributes {
+            criteria.push(format!("resource_attributes={:?}", res_attrs));
+        }
+        if let Some(scope_attrs) = &self.scope_attributes {
+            criteria.push(format!("scope_attributes={:?}", scope_attrs));
+        }
+        if !self.count_predicates.is_empty() {
+            let preds: Vec<String> = self.count_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("count({})", preds.join(" AND ")));
+        }
+        if !self.sum_predicates.is_empty() {
+            let preds: Vec<String> = self.sum_predicates.iter().map(|p| p.format()).collect();
+            criteria.push(format!("sum({})", preds.join(" AND ")));
+        }
+        for qp in &self.quantile_predicates {
+            criteria.push(format!(
+                "quantile[{}]({})",
+                qp.quantile,
+                qp.predicate.format()
+            ));
+        }
+        criteria.join(", ")
+    }
+
+    fn format_matching_metrics(&self) -> String {
+        let matching: Vec<_> = self.get_all();
+        if matching.is_empty() {
+            return String::new();
+        }
+
+        let mut output = String::from("Matching summaries:\n");
+        for (idx, metric) in matching.iter().enumerate() {
+            output.push_str(&format!("  [{}] name=\"{}\"\n", idx, metric.metric.name));
+        }
+        output
+    }
+
+    fn build_error_message(&self) -> String {
+        use opentelemetry_proto::tonic::metrics::v1::metric::Data;
+
+        let mut msg = String::from("No summaries matched the assertion.\n\nExpected:\n");
+
+        if let Some(ref name) = self.name {
+            msg.push_str(&format!("  name: \"{}\"\n", name));
+        }
+
+        if let Some(ref attrs) = self.attributes {
+            msg.push_str("  attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if let Some(ref attrs) = self.resource_attributes {
+            msg.push_str("  resource_attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if let Some(ref attrs) = self.scope_attributes {
+            msg.push_str("  scope_attributes:\n");
+            for (k, v) in attrs {
+                msg.push_str(&format!("    {}={:?}\n", k, v));
+            }
+        }
+
+        if !self.count_predicates.is_empty() {
+            msg.push_str("  count:\n");
+            for pred in &self.count_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        if !self.sum_predicates.is_empty() {
+            msg.push_str("  sum:\n");
+            for pred in &self.sum_predicates {
+                msg.push_str(&format!("    {}\n", pred.format()));
+            }
+        }
+
+        for qp in &self.quantile_predicates {
+            msg.push_str(&format!(
+                "  quantile[{}]: {}\n",
+                qp.quantile,
+                qp.predicate.format()
+            ));
+        }
+
+        let name_matches: Vec<_> = self
+            .metrics
+            .iter()
+            .filter(|m| {
+                self.name
+                    .as_ref()
+                    .map(|n| &m.metric.name == n)
+                    .unwrap_or(true)
+            })
+            .collect();
+
+        msg.push_str(&format!(
+            "\nFound {} metric(s) named {:?}:\n",
+            name_matches.len(),
+            self.name.as_deref().unwrap_or("*")
+        ));
+
+        for (idx, metric) in name_matches.iter().take(10).enumerate() {
+            let type_name = get_metric_type_name(&metric.metric);
+            msg.push_str(&format!("  [{}] type={}", idx, type_name));
+
+            if let Some(Data::Summary(s)) = &metric.metric.data
+                && let Some(dp) = s.data_points.first()
+            {
+                msg.push_str(&format!(", count={}, sum={}", dp.count, dp.sum));
+                if !dp.quantile_values.is_empty() {
+                    let quantiles: Vec<String> = dp
+                        .quantile_values
+                        .iter()
+                        .take(3)
+                        .map(|qv| format!("p{}={}", (qv.quantile * 100.0) as i32, qv.value))
+                        .collect();
+                    msg.push_str(&format!(", quantiles=[{}]", quantiles.join(", ")));
+                }
+            }
+
+            msg.push('\n');
+        }
+
+        if name_matches.len() > 10 {
+            msg.push_str(&format!("  ... and {} more\n", name_matches.len() - 10));
+        }
+
+        if name_matches.iter().any(|m| {
+            !matches!(
+                &m.metric.data,
+                Some(opentelemetry_proto::tonic::metrics::v1::metric::Data::Summary(_))
+            )
+        }) {
+            msg.push_str("\nHint: Use expect_histogram() for histograms, or expect_metric_with_name() for Sum/Gauge metrics.\n");
         }
 
         msg
@@ -2054,5 +4217,341 @@ mod tests {
             .with_attribute("endpoint", "/api/v1")
             .with_attribute("status", 200)
             .with_attribute("cached", true);
+    }
+
+    mod metric_value_tests {
+        use super::*;
+        use opentelemetry_proto::tonic::metrics::v1::{
+            Gauge, Metric, NumberDataPoint, Sum, metric::Data, number_data_point,
+        };
+
+        fn make_gauge_metric(name: &str, values: &[number_data_point::Value]) -> TestMetric {
+            let data_points: Vec<NumberDataPoint> = values
+                .iter()
+                .map(|v| NumberDataPoint {
+                    value: Some(*v),
+                    ..Default::default()
+                })
+                .collect();
+
+            TestMetric {
+                resource_attrs: Arc::new(vec![]),
+                scope_attrs: Arc::new(vec![]),
+                metric: Metric {
+                    name: name.to_string(),
+                    data: Some(Data::Gauge(Gauge { data_points })),
+                    ..Default::default()
+                },
+            }
+        }
+
+        fn make_sum_metric(name: &str, values: &[number_data_point::Value]) -> TestMetric {
+            let data_points: Vec<NumberDataPoint> = values
+                .iter()
+                .map(|v| NumberDataPoint {
+                    value: Some(*v),
+                    ..Default::default()
+                })
+                .collect();
+
+            TestMetric {
+                resource_attrs: Arc::new(vec![]),
+                scope_attrs: Arc::new(vec![]),
+                metric: Metric {
+                    name: name.to_string(),
+                    data: Some(Data::Sum(Sum {
+                        data_points,
+                        ..Default::default()
+                    })),
+                    ..Default::default()
+                },
+            }
+        }
+
+        #[test]
+        fn test_metric_value_from_i64() {
+            let v: MetricValue = 42i64.into();
+            assert!(matches!(v, MetricValue::Int(42)));
+        }
+
+        #[test]
+        fn test_metric_value_from_i32() {
+            let v: MetricValue = 42i32.into();
+            assert!(matches!(v, MetricValue::Int(42)));
+        }
+
+        #[test]
+        fn test_metric_value_from_f64() {
+            let v: MetricValue = 1.234f64.into();
+            assert!(matches!(v, MetricValue::Double(d) if (d - 1.234).abs() < f64::EPSILON));
+        }
+
+        #[test]
+        fn test_metric_value_from_f32() {
+            let v: MetricValue = 1.234f32.into();
+            assert!(matches!(v, MetricValue::Double(_)));
+        }
+
+        #[test]
+        fn test_metric_value_approx_eq_int() {
+            let a = MetricValue::Int(42);
+            let b = MetricValue::Int(42);
+            assert!(a.approx_eq(&b));
+
+            let c = MetricValue::Int(43);
+            assert!(!a.approx_eq(&c));
+        }
+
+        #[test]
+        fn test_metric_value_approx_eq_double() {
+            let a = MetricValue::Double(1.234);
+            let b = MetricValue::Double(1.234);
+            assert!(a.approx_eq(&b));
+
+            let c = MetricValue::Double(1.235);
+            assert!(!a.approx_eq(&c));
+        }
+
+        #[test]
+        fn test_metric_value_approx_eq_mixed() {
+            let a = MetricValue::Int(42);
+            let b = MetricValue::Double(42.0);
+            assert!(a.approx_eq(&b));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_eq() {
+            let pred = MetricValuePredicate::Eq(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(43)));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_gt() {
+            let pred = MetricValuePredicate::Gt(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(43)));
+            assert!(!pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(41)));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_gte() {
+            let pred = MetricValuePredicate::Gte(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(43)));
+            assert!(pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(41)));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_lt() {
+            let pred = MetricValuePredicate::Lt(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(41)));
+            assert!(!pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(43)));
+        }
+
+        #[test]
+        fn test_metric_value_predicate_lte() {
+            let pred = MetricValuePredicate::Lte(MetricValue::Int(42));
+            assert!(pred.matches(&MetricValue::Int(41)));
+            assert!(pred.matches(&MetricValue::Int(42)));
+            assert!(!pred.matches(&MetricValue::Int(43)));
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_eq_int() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "test_metric",
+                &[number_data_point::Value::AsInt(42)],
+            ));
+
+            mc.expect_metric_with_name("test_metric")
+                .with_value_eq(42)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_eq_double() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "test_metric",
+                &[number_data_point::Value::AsDouble(1.234)],
+            ));
+
+            mc.expect_metric_with_name("test_metric")
+                .with_value_eq(1.234)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_gt() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_sum_metric(
+                "request_count",
+                &[number_data_point::Value::AsInt(100)],
+            ));
+
+            mc.expect_metric_with_name("request_count")
+                .with_value_gt(50)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_gte() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "temperature",
+                &[number_data_point::Value::AsDouble(25.0)],
+            ));
+
+            mc.expect_metric_with_name("temperature")
+                .with_value_gte(25.0)
+                .assert_exists();
+
+            mc.expect_metric_with_name("temperature")
+                .with_value_gte(24.0)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_lt() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "error_rate",
+                &[number_data_point::Value::AsDouble(0.01)],
+            ));
+
+            mc.expect_metric_with_name("error_rate")
+                .with_value_lt(0.05)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_with_value_lte() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_sum_metric(
+                "latency_ms",
+                &[number_data_point::Value::AsInt(100)],
+            ));
+
+            mc.expect_metric_with_name("latency_ms")
+                .with_value_lte(100)
+                .assert_exists();
+
+            mc.expect_metric_with_name("latency_ms")
+                .with_value_lte(200)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_chained_value_predicates() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "response_time",
+                &[number_data_point::Value::AsDouble(150.0)],
+            ));
+
+            mc.expect_metric_with_name("response_time")
+                .with_value_gte(100.0)
+                .with_value_lte(200.0)
+                .assert_exists();
+        }
+
+        #[test]
+        #[should_panic(expected = "No metrics matched the assertion")]
+        fn test_metric_assertion_value_not_found() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "counter",
+                &[number_data_point::Value::AsInt(10)],
+            ));
+
+            mc.expect_metric_with_name("counter")
+                .with_value_eq(42)
+                .assert_exists();
+        }
+
+        #[test]
+        #[should_panic(expected = "No metrics matched the assertion")]
+        fn test_metric_assertion_chained_predicates_no_match() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "value",
+                &[number_data_point::Value::AsInt(50)],
+            ));
+
+            mc.expect_metric_with_name("value")
+                .with_value_gte(100)
+                .with_value_lte(200)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_assertion_multiple_data_points() {
+            let mut mc = MockCollector::new();
+            mc.metrics.push(make_gauge_metric(
+                "multi_point",
+                &[
+                    number_data_point::Value::AsInt(10),
+                    number_data_point::Value::AsInt(50),
+                    number_data_point::Value::AsInt(100),
+                ],
+            ));
+
+            mc.expect_metric_with_name("multi_point")
+                .with_value_eq(50)
+                .assert_exists();
+
+            mc.expect_metric_with_name("multi_point")
+                .with_value_gte(100)
+                .assert_exists();
+
+            mc.expect_metric_with_name("multi_point")
+                .with_value_lt(20)
+                .assert_exists();
+        }
+
+        #[test]
+        fn test_metric_value_display() {
+            assert_eq!(format!("{}", MetricValue::Int(42)), "42");
+            assert_eq!(format!("{}", MetricValue::Double(1.234)), "1.234");
+        }
+
+        #[test]
+        fn test_metric_value_predicate_format() {
+            assert_eq!(
+                MetricValuePredicate::Eq(MetricValue::Int(42)).format(),
+                "== 42"
+            );
+            assert_eq!(
+                MetricValuePredicate::Gt(MetricValue::Int(42)).format(),
+                "> 42"
+            );
+            assert_eq!(
+                MetricValuePredicate::Gte(MetricValue::Double(1.234)).format(),
+                ">= 1.234"
+            );
+            assert_eq!(
+                MetricValuePredicate::Lt(MetricValue::Int(100)).format(),
+                "< 100"
+            );
+            assert_eq!(
+                MetricValuePredicate::Lte(MetricValue::Double(99.9)).format(),
+                "<= 99.9"
+            );
+        }
+
+        #[test]
+        fn test_format_criteria_includes_value_predicates() {
+            let mc = MockCollector::new();
+            let assertion = mc
+                .expect_metric_with_name("test")
+                .with_value_gte(100)
+                .with_value_lt(200);
+
+            let criteria = assertion.format_criteria();
+            assert!(criteria.contains("value(>= 100 AND < 200)"));
+        }
     }
 }

@@ -127,6 +127,31 @@
 //! - [`MetricAssertion::assert_at_least`]: Assert minimum matches
 //! - [`MetricAssertion::assert_at_most`]: Assert maximum matches
 //!
+//! ## Histogram, ExponentialHistogram, and Summary Assertions
+//!
+//! For type-specific metric assertions, use the dedicated builders:
+//!
+//! - [`HistogramAssertion`]: Assert on histogram count, sum, min, max, and bucket counts
+//! - [`ExponentialHistogramAssertion`]: Assert on exponential histogram with zero_count and scale
+//! - [`SummaryAssertion`]: Assert on summary count, sum, and quantile values
+//!
+//! ```no_run
+//! # use mock_collector::MockCollector;
+//! # let collector = MockCollector::new();
+//! // Histogram with value assertions
+//! collector
+//!     .expect_histogram("http_request_duration")
+//!     .with_count_gte(100)
+//!     .with_sum_gte(5000.0)
+//!     .assert_exists();
+//!
+//! // Summary with quantile assertions
+//! collector
+//!     .expect_summary("response_time")
+//!     .with_quantile_lte(0.99, 500.0)  // p99 <= 500ms
+//!     .assert_exists();
+//! ```
+//!
 //! ## Waiting Methods
 //!
 //! - [`ServerHandle::wait_until`]: Wait for a custom predicate to return true
@@ -144,8 +169,8 @@ mod error;
 mod server;
 
 pub use collector::{
-    LogAssertion, MetricAssertion, MockCollector, SpanAssertion, TestLogRecord, TestMetric,
-    TestSpan,
+    ExponentialHistogramAssertion, HistogramAssertion, LogAssertion, MetricAssertion,
+    MockCollector, SpanAssertion, SummaryAssertion, TestLogRecord, TestMetric, TestSpan,
 };
 pub use error::MockServerError;
 pub use opentelemetry_otlp::Protocol;
