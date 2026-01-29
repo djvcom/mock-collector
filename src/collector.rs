@@ -795,7 +795,6 @@ impl<'a> LogAssertion<'a> {
     }
 
     fn matches(&self, test_log: &TestLogRecord) -> bool {
-        // Check body if specified
         if let Some(expected_body) = &self.body {
             if let Some(body) = &test_log.log_record.body {
                 if let Some(string_value) = &body.value {
@@ -812,35 +811,30 @@ impl<'a> LogAssertion<'a> {
             }
         }
 
-        // Check attributes if specified
         if let Some(expected_attrs) = &self.attributes
             && !Self::check_attributes(&test_log.log_record.attributes, expected_attrs)
         {
             return false;
         }
 
-        // Check resource attributes if specified
         if let Some(expected_res_attrs) = &self.resource_attributes
             && !Self::check_attributes(&test_log.resource_attrs, expected_res_attrs)
         {
             return false;
         }
 
-        // Check scope attributes if specified
         if let Some(expected_scope_attrs) = &self.scope_attributes
             && !Self::check_attributes(&test_log.scope_attrs, expected_scope_attrs)
         {
             return false;
         }
 
-        // Check severity number if specified
         if let Some(expected_severity) = self.severity_number
             && test_log.log_record.severity_number != expected_severity
         {
             return false;
         }
 
-        // Check severity text if specified
         if let Some(ref expected_text) = self.severity_text
             && &test_log.log_record.severity_text != expected_text
         {
@@ -1255,14 +1249,12 @@ impl<'a> SpanAssertion<'a> {
     }
 
     fn matches(&self, span: &TestSpan) -> bool {
-        // Check name
         if let Some(ref expected_name) = self.name
             && &span.span.name != expected_name
         {
             return false;
         }
 
-        // Check attributes
         if let Some(ref expected_attrs) = self.attributes {
             for (key, value) in expected_attrs {
                 if !span
@@ -1276,7 +1268,6 @@ impl<'a> SpanAssertion<'a> {
             }
         }
 
-        // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes {
             for (key, value) in expected_attrs {
                 if !span
@@ -1289,7 +1280,6 @@ impl<'a> SpanAssertion<'a> {
             }
         }
 
-        // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes {
             for (key, value) in expected_attrs {
                 if !span
@@ -1302,7 +1292,6 @@ impl<'a> SpanAssertion<'a> {
             }
         }
 
-        // Check event names
         if let Some(ref expected_event_names) = self.event_names {
             for expected_name in expected_event_names {
                 if !span
@@ -1316,17 +1305,12 @@ impl<'a> SpanAssertion<'a> {
             }
         }
 
-        // Check events with attributes
         if let Some(ref expected_events) = self.event_with_attributes {
             for (event_name, expected_attrs) in expected_events {
-                // Find an event with matching name and all expected attributes
                 let found = span.span.events.iter().any(|event| {
-                    // First check if event name matches
                     if &event.name != event_name {
                         return false;
                     }
-
-                    // Then check if all expected attributes are present
                     expected_attrs.iter().all(|(key, value)| {
                         event.attributes.iter().any(|attr| {
                             &attr.key == key && Self::any_value_matches(&attr.value, value)
@@ -2207,17 +2191,13 @@ impl<'a> MetricAssertion<'a> {
     }
 
     fn matches(&self, metric: &TestMetric) -> bool {
-        // Check name
         if let Some(ref expected_name) = self.name
             && &metric.metric.name != expected_name
         {
             return false;
         }
 
-        // Check metric attributes (data point attributes)
         if let Some(ref expected_attrs) = self.attributes {
-            // Metrics have data points with attributes
-            // We check if any data point has the expected attributes
             let has_matching_data_point =
                 Self::check_metric_data_points(&metric.metric, expected_attrs);
             if !has_matching_data_point {
@@ -2225,27 +2205,23 @@ impl<'a> MetricAssertion<'a> {
             }
         }
 
-        // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes
             && !Self::check_attributes(&metric.resource_attrs, expected_attrs)
         {
             return false;
         }
 
-        // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes
             && !Self::check_attributes(&metric.scope_attrs, expected_attrs)
         {
             return false;
         }
 
-        // Check value predicates
         if !self.value_predicates.is_empty() {
             let values = Self::get_data_point_values(&metric.metric);
             if values.is_empty() {
                 return false;
             }
-            // Check if ANY data point value satisfies ALL predicates
             let has_matching_value = values.iter().any(|actual| {
                 self.value_predicates
                     .iter()
@@ -2287,7 +2263,6 @@ impl<'a> MetricAssertion<'a> {
                         }
                     }
                 }
-                // Histogram, ExponentialHistogram, and Summary do not have simple scalar values
                 Data::Histogram(_) | Data::ExponentialHistogram(_) | Data::Summary(_) => {}
             }
         }
@@ -2298,7 +2273,6 @@ impl<'a> MetricAssertion<'a> {
     fn check_metric_data_points(metric: &Metric, expected: &[(String, Value)]) -> bool {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data;
 
-        // Check data points based on metric type
         if let Some(ref data) = metric.data {
             match data {
                 Data::Gauge(gauge) => gauge
@@ -2440,7 +2414,6 @@ impl<'a> MetricAssertion<'a> {
             for (idx, metric) in self.metrics.iter().take(10).enumerate() {
                 msg.push_str(&format!("  [{}] name=\"{}\"", idx, metric.metric.name));
 
-                // Show data point values and attributes if available
                 let values = Self::get_data_point_values(&metric.metric);
                 if !values.is_empty() {
                     let value_strs: Vec<String> = values.iter().map(|v| v.to_string()).collect();
@@ -2754,43 +2727,36 @@ impl<'a> HistogramAssertion<'a> {
     fn matches(&self, metric: &TestMetric) -> bool {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data;
 
-        // Check name
         if let Some(ref expected_name) = self.name
             && &metric.metric.name != expected_name
         {
             return false;
         }
 
-        // Must be a histogram
         let histogram = match &metric.metric.data {
             Some(Data::Histogram(h)) => h,
             _ => return false,
         };
 
-        // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes
             && !check_attributes(&metric.resource_attrs, expected_attrs)
         {
             return false;
         }
 
-        // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes
             && !check_attributes(&metric.scope_attrs, expected_attrs)
         {
             return false;
         }
 
-        // Check if any data point matches all criteria
         histogram.data_points.iter().any(|dp| {
-            // Check data point attributes
             if let Some(ref expected_attrs) = self.attributes
                 && !check_attributes(&dp.attributes, expected_attrs)
             {
                 return false;
             }
 
-            // Check count predicates
             if !self
                 .count_predicates
                 .iter()
@@ -2799,7 +2765,6 @@ impl<'a> HistogramAssertion<'a> {
                 return false;
             }
 
-            // Check sum predicates (only if sum is present in data point)
             if !self.sum_predicates.is_empty() {
                 match dp.sum {
                     Some(sum) => {
@@ -2811,7 +2776,6 @@ impl<'a> HistogramAssertion<'a> {
                 }
             }
 
-            // Check min predicates (only if min is present in data point)
             if !self.min_predicates.is_empty() {
                 match dp.min {
                     Some(min) => {
@@ -2823,7 +2787,6 @@ impl<'a> HistogramAssertion<'a> {
                 }
             }
 
-            // Check max predicates (only if max is present in data point)
             if !self.max_predicates.is_empty() {
                 match dp.max {
                     Some(max) => {
@@ -2835,7 +2798,6 @@ impl<'a> HistogramAssertion<'a> {
                 }
             }
 
-            // Check bucket predicates
             for bucket_pred in &self.bucket_predicates {
                 if let Some(&bucket_count) = dp.bucket_counts.get(bucket_pred.index) {
                     if !bucket_pred.predicate.matches(bucket_count) {
@@ -2965,7 +2927,6 @@ impl<'a> HistogramAssertion<'a> {
             ));
         }
 
-        // Find metrics with matching name to show type mismatch hints
         let name_matches: Vec<_> = self
             .metrics
             .iter()
@@ -3271,43 +3232,36 @@ impl<'a> ExponentialHistogramAssertion<'a> {
     fn matches(&self, metric: &TestMetric) -> bool {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data;
 
-        // Check name
         if let Some(ref expected_name) = self.name
             && &metric.metric.name != expected_name
         {
             return false;
         }
 
-        // Must be an exponential histogram
         let exp_histogram = match &metric.metric.data {
             Some(Data::ExponentialHistogram(h)) => h,
             _ => return false,
         };
 
-        // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes
             && !check_attributes(&metric.resource_attrs, expected_attrs)
         {
             return false;
         }
 
-        // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes
             && !check_attributes(&metric.scope_attrs, expected_attrs)
         {
             return false;
         }
 
-        // Check if any data point matches all criteria
         exp_histogram.data_points.iter().any(|dp| {
-            // Check data point attributes
             if let Some(ref expected_attrs) = self.attributes
                 && !check_attributes(&dp.attributes, expected_attrs)
             {
                 return false;
             }
 
-            // Check count predicates
             if !self
                 .count_predicates
                 .iter()
@@ -3316,7 +3270,6 @@ impl<'a> ExponentialHistogramAssertion<'a> {
                 return false;
             }
 
-            // Check sum predicates (only if sum is present in data point)
             if !self.sum_predicates.is_empty() {
                 match dp.sum {
                     Some(sum) => {
@@ -3328,7 +3281,6 @@ impl<'a> ExponentialHistogramAssertion<'a> {
                 }
             }
 
-            // Check min predicates (only if min is present in data point)
             if !self.min_predicates.is_empty() {
                 match dp.min {
                     Some(min) => {
@@ -3340,7 +3292,6 @@ impl<'a> ExponentialHistogramAssertion<'a> {
                 }
             }
 
-            // Check max predicates (only if max is present in data point)
             if !self.max_predicates.is_empty() {
                 match dp.max {
                     Some(max) => {
@@ -3352,7 +3303,6 @@ impl<'a> ExponentialHistogramAssertion<'a> {
                 }
             }
 
-            // Check zero count predicates
             if !self
                 .zero_count_predicates
                 .iter()
@@ -3361,7 +3311,6 @@ impl<'a> ExponentialHistogramAssertion<'a> {
                 return false;
             }
 
-            // Check scale predicate
             if let Some(expected_scale) = self.scale_predicate
                 && dp.scale != expected_scale
             {
@@ -3499,7 +3448,6 @@ impl<'a> ExponentialHistogramAssertion<'a> {
             msg.push_str(&format!("  scale: == {}\n", scale));
         }
 
-        // Find metrics with matching name
         let name_matches: Vec<_> = self
             .metrics
             .iter()
@@ -3817,43 +3765,36 @@ impl<'a> SummaryAssertion<'a> {
     fn matches(&self, metric: &TestMetric) -> bool {
         use opentelemetry_proto::tonic::metrics::v1::metric::Data;
 
-        // Check name
         if let Some(ref expected_name) = self.name
             && &metric.metric.name != expected_name
         {
             return false;
         }
 
-        // Must be a summary
         let summary = match &metric.metric.data {
             Some(Data::Summary(s)) => s,
             _ => return false,
         };
 
-        // Check resource attributes
         if let Some(ref expected_attrs) = self.resource_attributes
             && !check_attributes(&metric.resource_attrs, expected_attrs)
         {
             return false;
         }
 
-        // Check scope attributes
         if let Some(ref expected_attrs) = self.scope_attributes
             && !check_attributes(&metric.scope_attrs, expected_attrs)
         {
             return false;
         }
 
-        // Check if any data point matches all criteria
         summary.data_points.iter().any(|dp| {
-            // Check data point attributes
             if let Some(ref expected_attrs) = self.attributes
                 && !check_attributes(&dp.attributes, expected_attrs)
             {
                 return false;
             }
 
-            // Check count predicates
             if !self
                 .count_predicates
                 .iter()
@@ -3862,7 +3803,6 @@ impl<'a> SummaryAssertion<'a> {
                 return false;
             }
 
-            // Check sum predicates
             if !self.sum_predicates.is_empty()
                 && !self
                     .sum_predicates
@@ -3872,9 +3812,7 @@ impl<'a> SummaryAssertion<'a> {
                 return false;
             }
 
-            // Check quantile predicates
             for qp in &self.quantile_predicates {
-                // Find the matching quantile value
                 let quantile_match = dp.quantile_values.iter().any(|qv| {
                     (qv.quantile - qp.quantile).abs() < f64::EPSILON
                         && qp.predicate.matches_f64(qv.value)
@@ -3985,7 +3923,6 @@ impl<'a> SummaryAssertion<'a> {
             ));
         }
 
-        // Find metrics with matching name
         let name_matches: Vec<_> = self
             .metrics
             .iter()
