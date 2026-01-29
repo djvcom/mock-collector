@@ -8,11 +8,19 @@ on:
   push:
     branches:
       - main
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish to crates.io'
+        required: true
+        default: false
+        type: boolean
 
 jobs:
   release-pr:
     name: Create Release PR
     runs-on: ubuntu-latest
+    if: github.event_name == 'push'
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
@@ -33,7 +41,9 @@ jobs:
     name: Publish Release
     runs-on: ubuntu-latest
     environment: prod
-    if: "github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore: release')"
+    if: >-
+      (github.event_name == 'workflow_dispatch' && inputs.publish) ||
+      (github.event_name == 'push' && startsWith(github.event.head_commit.message, 'chore: release'))
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
