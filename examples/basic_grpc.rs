@@ -17,7 +17,6 @@ use opentelemetry_proto::tonic::resource::v1::Resource;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting mock OTLP collector with gRPC protocol...");
 
-    // Start a gRPC server on an OS-assigned port
     let server = MockServer::builder()
         .protocol(Protocol::Grpc)
         .start()
@@ -25,12 +24,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Server started on {}", server.addr());
 
-    // Create a gRPC client
     let mut client = LogsServiceClient::connect(format!("http://{}", server.addr())).await?;
 
     println!("Sending log records via gRPC...");
 
-    // Send some log records
     let request = ExportLogsServiceRequest {
         resource_logs: vec![ResourceLogs {
             resource: Some(Resource {
@@ -96,17 +93,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     server.wait_for_logs(3, Duration::from_secs(5)).await?;
     println!("Logs arrived (waited with timeout)");
 
-    // Perform assertions on collected data
     println!("Performing assertions...");
 
     server
         .with_collector(|collector| {
             println!("Total logs collected: {}", collector.log_count());
 
-            // Assert we received exactly 3 logs
             assert_eq!(collector.log_count(), 3);
 
-            // Assert on specific log
             collector
                 .expect_log_with_body("Application started")
                 .with_resource_attributes([("service.name", "example-service")])
@@ -114,7 +108,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("✓ Found 'Application started' log with correct service name");
 
-            // Assert on log with attributes
             collector
                 .expect_log_with_body("Processing request")
                 .with_attributes([("request.id", "req-12345")])
@@ -122,7 +115,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("✓ Found 'Processing request' log with request ID");
 
-            // Count logs from the service
             let service_logs = collector
                 .expect_log()
                 .with_resource_attributes([("service.name", "example-service")])
@@ -130,7 +122,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("✓ Found {} logs from example-service", service_logs);
 
-            // Verify negative case - this log doesn't exist
             collector
                 .expect_log_with_body("Error occurred")
                 .assert_not_exists();
@@ -141,7 +132,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nAll assertions passed!");
 
-    // Graceful shutdown
     server.shutdown().await?;
     println!("Server shut down successfully");
 
