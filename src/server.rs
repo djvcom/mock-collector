@@ -715,7 +715,6 @@ impl Drop for ServerHandle {
     }
 }
 
-// gRPC service implementation
 #[derive(Clone)]
 struct GrpcLogsService {
     collector: Arc<RwLock<MockCollector>>,
@@ -779,7 +778,6 @@ impl MetricsService for GrpcMetricsService {
     }
 }
 
-// HTTP protocol type
 #[derive(Clone, Copy, Debug)]
 enum HttpProtocol {
     Json,
@@ -787,76 +785,23 @@ enum HttpProtocol {
 }
 
 impl HttpProtocol {
-    fn decode_logs(&self, body: &[u8]) -> Result<ExportLogsServiceRequest, MockServerError> {
+    fn decode<T: prost::Message + Default + serde::de::DeserializeOwned>(
+        &self,
+        body: &[u8],
+    ) -> Result<T, MockServerError> {
         match self {
             HttpProtocol::Json => {
                 serde_json::from_slice(body).map_err(MockServerError::JsonParseError)
             }
             HttpProtocol::Binary => {
-                prost::Message::decode(body).map_err(MockServerError::ProtobufParseError)
+                <T as prost::Message>::decode(body).map_err(MockServerError::ProtobufParseError)
             }
         }
     }
 
-    fn encode_logs(
+    fn encode<T: prost::Message + serde::Serialize>(
         &self,
-        response: &ExportLogsServiceResponse,
-    ) -> Result<Vec<u8>, MockServerError> {
-        match self {
-            HttpProtocol::Json => {
-                serde_json::to_vec(response).map_err(MockServerError::JsonParseError)
-            }
-            HttpProtocol::Binary => {
-                let mut buf = Vec::new();
-                prost::Message::encode(response, &mut buf)
-                    .map_err(|e| MockServerError::EncodeError(e.to_string()))?;
-                Ok(buf)
-            }
-        }
-    }
-
-    fn decode_traces(&self, body: &[u8]) -> Result<ExportTraceServiceRequest, MockServerError> {
-        match self {
-            HttpProtocol::Json => {
-                serde_json::from_slice(body).map_err(MockServerError::JsonParseError)
-            }
-            HttpProtocol::Binary => {
-                prost::Message::decode(body).map_err(MockServerError::ProtobufParseError)
-            }
-        }
-    }
-
-    fn encode_traces(
-        &self,
-        response: &ExportTraceServiceResponse,
-    ) -> Result<Vec<u8>, MockServerError> {
-        match self {
-            HttpProtocol::Json => {
-                serde_json::to_vec(response).map_err(MockServerError::JsonParseError)
-            }
-            HttpProtocol::Binary => {
-                let mut buf = Vec::new();
-                prost::Message::encode(response, &mut buf)
-                    .map_err(|e| MockServerError::EncodeError(e.to_string()))?;
-                Ok(buf)
-            }
-        }
-    }
-
-    fn decode_metrics(&self, body: &[u8]) -> Result<ExportMetricsServiceRequest, MockServerError> {
-        match self {
-            HttpProtocol::Json => {
-                serde_json::from_slice(body).map_err(MockServerError::JsonParseError)
-            }
-            HttpProtocol::Binary => {
-                prost::Message::decode(body).map_err(MockServerError::ProtobufParseError)
-            }
-        }
-    }
-
-    fn encode_metrics(
-        &self,
-        response: &ExportMetricsServiceResponse,
+        response: &T,
     ) -> Result<Vec<u8>, MockServerError> {
         match self {
             HttpProtocol::Json => {
@@ -879,18 +824,23 @@ impl HttpProtocol {
     }
 }
 
-// HTTP service implementation
 #[derive(Clone)]
 struct HttpServerState {
     collector: Arc<RwLock<MockCollector>>,
     protocol: HttpProtocol,
 }
 
-async fn handle_http_logs(
-    State(state): State<HttpServerState>,
-    body: axum::body::Bytes,
-) -> impl IntoResponse {
-    let request = match state.protocol.decode_logs(&body) {
+async fn handle_http_signal<Req, Resp>(
+    state: &HttpServerState,
+    body: &[u8],
+    add_fn: fn(&mut MockCollector, Req),
+    response: Resp,
+) -> axum::response::Response
+where
+    Req: prost::Message + Default + serde::de::DeserializeOwned,
+    Resp: prost::Message + serde::Serialize,
+{
+    let request: Req = match state.protocol.decode(body) {
         Ok(req) => req,
         Err(e) => {
             return (
@@ -901,13 +851,9 @@ async fn handle_http_logs(
         }
     };
 
-    state.collector.write().await.add_logs(request);
+    add_fn(&mut *state.collector.write().await, request);
 
-    let response = ExportLogsServiceResponse {
-        partial_success: None,
-    };
-
-    match state.protocol.encode_logs(&response) {
+    match state.protocol.encode(&response) {
         Ok(bytes) => (
             StatusCode::OK,
             [(
@@ -923,82 +869,49 @@ async fn handle_http_logs(
         )
             .into_response(),
     }
+}
+
+async fn handle_http_logs(
+    State(state): State<HttpServerState>,
+    body: axum::body::Bytes,
+) -> axum::response::Response {
+    handle_http_signal(
+        &state,
+        &body,
+        MockCollector::add_logs,
+        ExportLogsServiceResponse {
+            partial_success: None,
+        },
+    )
+    .await
 }
 
 async fn handle_http_traces(
     State(state): State<HttpServerState>,
     body: axum::body::Bytes,
-) -> impl IntoResponse {
-    let request = match state.protocol.decode_traces(&body) {
-        Ok(req) => req,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("Failed to parse request: {}", e),
-            )
-                .into_response();
-        }
-    };
-
-    state.collector.write().await.add_traces(request);
-
-    let response = ExportTraceServiceResponse {
-        partial_success: None,
-    };
-
-    match state.protocol.encode_traces(&response) {
-        Ok(bytes) => (
-            StatusCode::OK,
-            [(
-                axum::http::header::CONTENT_TYPE,
-                state.protocol.content_type(),
-            )],
-            bytes,
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to encode response: {}", e),
-        )
-            .into_response(),
-    }
+) -> axum::response::Response {
+    handle_http_signal(
+        &state,
+        &body,
+        MockCollector::add_traces,
+        ExportTraceServiceResponse {
+            partial_success: None,
+        },
+    )
+    .await
 }
 
 async fn handle_http_metrics(
     State(state): State<HttpServerState>,
     body: axum::body::Bytes,
-) -> impl IntoResponse {
-    let request = match state.protocol.decode_metrics(&body) {
-        Ok(req) => req,
-        Err(e) => {
-            return (
-                StatusCode::BAD_REQUEST,
-                format!("Failed to parse request: {}", e),
-            )
-                .into_response();
-        }
-    };
-
-    state.collector.write().await.add_metrics(request);
-
-    let response = ExportMetricsServiceResponse {
-        partial_success: None,
-    };
-
-    match state.protocol.encode_metrics(&response) {
-        Ok(bytes) => (
-            StatusCode::OK,
-            [(
-                axum::http::header::CONTENT_TYPE,
-                state.protocol.content_type(),
-            )],
-            bytes,
-        )
-            .into_response(),
-        Err(e) => (
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("Failed to encode response: {}", e),
-        )
-            .into_response(),
-    }
+) -> axum::response::Response {
+    handle_http_signal(
+        &state,
+        &body,
+        MockCollector::add_metrics,
+        ExportMetricsServiceResponse {
+            partial_success: None,
+        },
+    )
+    .await
 }

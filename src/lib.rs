@@ -101,51 +101,26 @@
 //!
 //! # Assertion API
 //!
-//! The library provides assertion methods for logs, traces, and metrics:
-//!
-//! ## Log Assertions
-//!
-//! - [`LogAssertion::assert_exists`]: Assert at least one log matches
-//! - [`LogAssertion::assert_not_exists`]: Assert no logs match
-//! - [`LogAssertion::assert_count`]: Assert exact number of matches
-//! - [`LogAssertion::assert_at_least`]: Assert minimum matches
-//! - [`LogAssertion::assert_at_most`]: Assert maximum matches
-//!
-//! ## Trace Assertions
-//!
-//! - [`SpanAssertion::assert_exists`]: Assert at least one span matches
-//! - [`SpanAssertion::assert_not_exists`]: Assert no spans match
-//! - [`SpanAssertion::assert_count`]: Assert exact number of matches
-//! - [`SpanAssertion::assert_at_least`]: Assert minimum matches
-//! - [`SpanAssertion::assert_at_most`]: Assert maximum matches
-//!
-//! ## Metric Assertions
-//!
-//! - [`MetricAssertion::assert_exists`]: Assert at least one metric matches
-//! - [`MetricAssertion::assert_not_exists`]: Assert no metrics match
-//! - [`MetricAssertion::assert_count`]: Assert exact number of matches
-//! - [`MetricAssertion::assert_at_least`]: Assert minimum matches
-//! - [`MetricAssertion::assert_at_most`]: Assert maximum matches
-//!
-//! ## Histogram, ExponentialHistogram, and Summary Assertions
+//! All signal types ([`LogAssertion`], [`SpanAssertion`], [`MetricAssertion`]) share the
+//! same fluent API: `assert_exists`, `assert_not_exists`, `assert_count`, `assert_at_least`,
+//! `assert_at_most`, `count`, and `get_all`. Each supports filtering by `with_attributes`,
+//! `with_resource_attributes`, and `with_scope_attributes`.
 //!
 //! For type-specific metric assertions, use the dedicated builders:
 //!
-//! - [`HistogramAssertion`]: Assert on histogram count, sum, min, max, and bucket counts
-//! - [`ExponentialHistogramAssertion`]: Assert on exponential histogram with zero_count and scale
-//! - [`SummaryAssertion`]: Assert on summary count, sum, and quantile values
+//! - [`HistogramAssertion`]: count, sum, min, max, and bucket counts
+//! - [`ExponentialHistogramAssertion`]: count, sum, min, max, zero_count, and scale
+//! - [`SummaryAssertion`]: count, sum, and quantile values
 //!
 //! ```no_run
 //! # use mock_collector::MockCollector;
 //! # let collector = MockCollector::new();
-//! // Histogram with value assertions
 //! collector
 //!     .expect_histogram("http_request_duration")
 //!     .with_count_gte(100)
 //!     .with_sum_gte(5000.0)
 //!     .assert_exists();
 //!
-//! // Summary with quantile assertions
 //! collector
 //!     .expect_summary("response_time")
 //!     .with_quantile_lte(0.99, 500.0)  // p99 <= 500ms

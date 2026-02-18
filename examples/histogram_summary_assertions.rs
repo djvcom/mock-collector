@@ -151,20 +151,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     server
         .with_collector(|collector| {
-            // Basic histogram existence check
             collector
                 .expect_histogram("http_request_duration")
                 .assert_exists();
             println!("Found 'http_request_duration' histogram");
 
-            // Histogram with attribute matching
             collector
                 .expect_histogram("http_request_duration")
                 .with_attributes([("method", "GET")])
                 .assert_exists();
             println!("Found histogram with method=GET attribute");
 
-            // Count assertions
             collector
                 .expect_histogram("http_request_duration")
                 .with_count_eq(150)
@@ -177,7 +174,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .assert_exists();
             println!("Histogram has at least 100 observations");
 
-            // Sum assertions
             collector
                 .expect_histogram("http_request_duration")
                 .with_sum_eq(7500.0)
@@ -190,7 +186,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .assert_exists();
             println!("Histogram sum is at least 5000.0");
 
-            // Min/max assertions
             collector
                 .expect_histogram("http_request_duration")
                 .with_min_lte(20.0)
@@ -198,14 +193,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .assert_exists();
             println!("Histogram min <= 20.0 and max >= 200.0");
 
-            // Bucket count assertions
             collector
                 .expect_histogram("http_request_duration")
                 .with_bucket_count_gte(2, 50)
                 .assert_exists();
             println!("Bucket at index 2 has at least 50 observations");
 
-            // Combined assertions
             collector
                 .expect_histogram("http_request_duration")
                 .with_attributes([("method", "GET")])
@@ -217,20 +210,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\n=== Exponential Histogram Assertions ===\n");
 
-            // Basic exponential histogram check
             collector
                 .expect_exponential_histogram("latency")
                 .assert_exists();
             println!("Found 'latency' exponential histogram");
 
-            // With attribute matching
             collector
                 .expect_exponential_histogram("latency")
                 .with_attributes([("endpoint", "/api/users")])
                 .assert_exists();
             println!("Found exponential histogram with endpoint attribute");
 
-            // Count and sum assertions (same as regular histogram)
             collector
                 .expect_exponential_histogram("latency")
                 .with_count_gte(100)
@@ -238,21 +228,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .assert_exists();
             println!("Exponential histogram count >= 100 and sum >= 5000.0");
 
-            // Zero count assertion
             collector
                 .expect_exponential_histogram("latency")
                 .with_zero_count_lte(5)
                 .assert_exists();
             println!("Exponential histogram has at most 5 zero values");
 
-            // Scale assertion
             collector
                 .expect_exponential_histogram("latency")
                 .with_scale_eq(3)
                 .assert_exists();
             println!("Exponential histogram has scale = 3");
 
-            // Min/max assertions
             collector
                 .expect_exponential_histogram("latency")
                 .with_min_lte(10.0)
@@ -262,18 +249,15 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\n=== Summary Assertions ===\n");
 
-            // Basic summary check
             collector.expect_summary("response_time").assert_exists();
             println!("Found 'response_time' summary");
 
-            // With attribute matching
             collector
                 .expect_summary("response_time")
                 .with_attributes([("handler", "index")])
                 .assert_exists();
             println!("Found summary with handler=index attribute");
 
-            // Count and sum assertions
             collector
                 .expect_summary("response_time")
                 .with_count_eq(1000)
@@ -281,7 +265,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .assert_exists();
             println!("Summary has count=1000 and sum=50000.0");
 
-            // Quantile assertions
             collector
                 .expect_summary("response_time")
                 .with_quantile_lte(0.5, 50.0)
@@ -300,7 +283,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 .assert_exists();
             println!("p99 is at most 200.0ms");
 
-            // Combined quantile assertions
             collector
                 .expect_summary("response_time")
                 .with_count_gte(500)
@@ -311,20 +293,17 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("\n=== Negative Assertions ===\n");
 
-            // Verify non-existent histograms don't match
             collector
                 .expect_histogram("nonexistent_histogram")
                 .assert_not_exists();
             println!("Verified 'nonexistent_histogram' doesn't exist");
 
-            // Verify histogram with wrong count doesn't match
             collector
                 .expect_histogram("http_request_duration")
                 .with_count_gt(1000)
                 .assert_not_exists();
             println!("Verified histogram with count > 1000 doesn't exist");
 
-            // Debug output
             println!("\n=== Debug Output ===\n");
             println!("{}", collector.dump());
         })

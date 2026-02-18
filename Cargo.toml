@@ -37,6 +37,11 @@ reqwest = { version = "0.12.28", features = ["json", "rustls-tls"], default-feat
 tracing = "0.1.44"
 zstd = "0.13.3"
 
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

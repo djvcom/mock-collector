@@ -1,3 +1,5 @@
+#![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
+
 use mock_collector::{MockServer, MockServerError, Protocol};
 use std::fs;
 use std::path::PathBuf;

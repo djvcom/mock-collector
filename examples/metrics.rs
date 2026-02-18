@@ -19,7 +19,6 @@ use opentelemetry_proto::tonic::resource::v1::Resource;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("Starting mock OTLP collector with gRPC protocol...");
 
-    // Start a gRPC server on an OS-assigned port
     let server = MockServer::builder()
         .protocol(Protocol::Grpc)
         .start()
@@ -27,12 +26,10 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Server started on {}", server.addr());
 
-    // Create a gRPC client
     let mut client = MetricsServiceClient::connect(format!("http://{}", server.addr())).await?;
 
     println!("Sending metrics via gRPC...");
 
-    // Send some metrics
     let request = ExportMetricsServiceRequest {
         resource_metrics: vec![ResourceMetrics {
             resource: Some(Resource {
@@ -159,17 +156,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Metrics sent successfully!\n");
 
-    // Perform assertions on collected data
     println!("Performing assertions...");
 
     server
         .with_collector(|collector| {
             println!("Total metrics collected: {}", collector.metric_count());
 
-            // Assert we received exactly 3 metrics
             assert_eq!(collector.metric_count(), 3);
 
-            // Assert on specific metric with resource and attributes
             collector
                 .expect_metric_with_name("http_requests_total")
                 .with_resource_attributes([
@@ -181,7 +175,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("✓ Found 'http_requests_total' metric with GET/200");
 
-            // Assert on another variant of the same metric
             collector
                 .expect_metric_with_name("http_requests_total")
                 .with_attributes([("method", "POST"), ("status", "201")])
@@ -189,7 +182,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("✓ Found 'http_requests_total' metric with POST/201");
 
-            // Count how many metrics match (note: one metric can have multiple data points)
             let http_request_metrics = collector
                 .expect_metric_with_name("http_requests_total")
                 .count();
@@ -200,7 +192,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             );
             assert_eq!(http_request_metrics, 1); // One metric (with multiple data points)
 
-            // Assert on database query metric
             collector
                 .expect_metric_with_name("db_query_duration_ms")
                 .with_attributes([("table", "users")])
@@ -208,14 +199,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("✓ Found 'db_query_duration_ms' metric for users table");
 
-            // Assert cache hits metric exists
             collector
                 .expect_metric_with_name("cache_hits_total")
                 .assert_exists();
 
             println!("✓ Found 'cache_hits_total' metric");
 
-            // Verify at least one metric from our service
             collector
                 .expect_metric()
                 .with_resource_attributes([("service.name", "api-gateway")])
@@ -223,14 +212,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
             println!("✓ At least one metric from api-gateway service");
 
-            // Verify negative case - this metric doesn't exist
             collector
                 .expect_metric_with_name("deprecated_metric")
                 .assert_not_exists();
 
             println!("✓ Verified 'deprecated_metric' doesn't exist");
 
-            // Count-based assertions
             collector
                 .expect_metric()
                 .with_resource_attributes([("deployment.environment", "production")])
@@ -242,7 +229,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("\nAll assertions passed!");
 
-    // Graceful shutdown
     server.shutdown().await?;
     println!("Server shut down successfully");
 

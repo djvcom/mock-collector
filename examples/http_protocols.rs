@@ -17,7 +17,6 @@ use prost::Message;
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("=== HTTP/JSON Protocol ===\n");
 
-    // Start HTTP/JSON server
     let json_server = MockServer::builder()
         .protocol(Protocol::HttpJson)
         .start()
@@ -25,7 +24,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("JSON server started on {}", json_server.addr());
 
-    // Create the log request
     let log_request = ExportLogsServiceRequest {
         resource_logs: vec![ResourceLogs {
             resource: Some(Resource {
@@ -54,7 +52,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }],
     };
 
-    // Send as JSON
     let client = reqwest::Client::new();
     let json_body = serde_json::to_string(&log_request)?;
     let response = client
@@ -80,7 +77,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("=== HTTP/Protobuf Protocol ===\n");
 
-    // Start HTTP/Protobuf server
     let proto_server = MockServer::builder()
         .protocol(Protocol::HttpBinary)
         .start()
@@ -88,7 +84,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Protobuf server started on {}", proto_server.addr());
 
-    // Create the same log request
     let log_request = ExportLogsServiceRequest {
         resource_logs: vec![ResourceLogs {
             resource: Some(Resource {
@@ -117,7 +112,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         }],
     };
 
-    // Encode as protobuf bytes
     let proto_bytes = log_request.encode_to_vec();
 
     let response = client

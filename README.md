@@ -38,15 +38,15 @@ use mock_collector::{MockServer, Protocol};
 
 #[tokio::test]
 async fn test_grpc_logging() {
-    // Start a gRPC server on port 4317
-    let server = MockServer::new(Protocol::Grpc, 4317)
+    let server = MockServer::builder()
+        .protocol(Protocol::Grpc)
+        .port(4317)
         .start()
         .await
         .unwrap();
 
     // Your application exports logs here...
 
-    // Assert logs were received
     server.with_collector(|collector| {
         collector
             .expect_log_with_body("Application started")
@@ -54,7 +54,6 @@ async fn test_grpc_logging() {
             .assert_exists();
     }).await;
 
-    // Graceful shutdown
     server.shutdown().await.unwrap();
 }
 ```
@@ -66,7 +65,9 @@ use mock_collector::{MockServer, Protocol};
 
 #[tokio::test]
 async fn test_http_json_logging() {
-    let server = MockServer::new(Protocol::HttpJson, 4318)
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpJson)
+        .port(4318)
         .start()
         .await
         .unwrap();
@@ -89,7 +90,9 @@ use mock_collector::{MockServer, Protocol};
 
 #[tokio::test]
 async fn test_http_binary_logging() {
-    let server = MockServer::new(Protocol::HttpBinary, 4318)
+    let server = MockServer::builder()
+        .protocol(Protocol::HttpBinary)
+        .port(4318)
         .start()
         .await
         .unwrap();
@@ -103,97 +106,30 @@ async fn test_http_binary_logging() {
 }
 ```
 
-### Testing Traces
+### Testing All Signals
 
-The same server automatically supports traces! Simply use the trace assertion API:
-
-```rust
-use mock_collector::{MockServer, Protocol};
-
-#[tokio::test]
-async fn test_traces() {
-    // Start server with default settings (gRPC on OS-assigned port)
-    let server = MockServer::builder().start().await.unwrap();
-
-    // Your application exports traces to the server...
-    // For gRPC: server.addr()
-    // For HTTP: http://{server.addr()}/v1/traces
-
-    server.with_collector(|collector| {
-        // Assert on spans
-        collector
-            .expect_span_with_name("GET /api/users")
-            .with_attributes([("http.method", "GET")])
-            .with_resource_attributes([("service.name", "api-gateway")])
-            .assert_exists();
-
-        // Count assertions work too
-        collector
-            .expect_span_with_name("database.query")
-            .assert_at_least(3);
-    }).await;
-}
-```
-
-### Testing Metrics
-
-The same server automatically supports metrics! Simply use the metric assertion API:
+One server handles logs, traces, and metrics simultaneously:
 
 ```rust
-use mock_collector::{MockServer, Protocol};
+use mock_collector::MockServer;
 
-#[tokio::test]
-async fn test_metrics() {
-    let server = MockServer::builder().start().await.unwrap();
-
-    // Your application exports metrics to the server...
-    // For gRPC: server.addr()
-    // For HTTP: http://{server.addr()}/v1/metrics
-
-    server.with_collector(|collector| {
-        // Assert on metrics
-        collector
-            .expect_metric_with_name("http_requests_total")
-            .with_attributes([("method", "GET")])
-            .with_resource_attributes([("service.name", "api-gateway")])
-            .assert_exists();
-
-        // Count assertions work too
-        collector
-            .expect_metric_with_name("db_query_duration")
-            .assert_at_least(1);
-    }).await;
-}
-```
-
-### Testing All Signals Together
-
-One collector handles all three signals simultaneously:
-
-```rust
 #[tokio::test]
 async fn test_all_signals() {
     let server = MockServer::builder().start().await.unwrap();
 
-    // Your app exports logs, traces, and metrics...
+    // Your app exports logs, traces, and metrics to server.addr()...
 
     server.with_collector(|collector| {
-        // Verify all signals were collected
-        assert_eq!(collector.log_count(), 10);
-        assert_eq!(collector.span_count(), 15);
-        assert_eq!(collector.metric_count(), 5);
-
-        // Assert on logs
         collector
             .expect_log_with_body("Request received")
             .assert_exists();
 
-        // Assert on traces
         collector
             .expect_span_with_name("handle_request")
+            .with_attributes([("http.method", "GET")])
+            .with_resource_attributes([("service.name", "api-gateway")])
             .assert_exists();
 
-        // Assert on metrics
         collector
             .expect_metric_with_name("requests_total")
             .assert_exists();
@@ -203,85 +139,35 @@ async fn test_all_signals() {
 
 ## Assertion API
 
-### Log Assertions
+All signal types (logs, spans, metrics) share the same fluent assertion API:
 
 ```rust
-// Assert at least one log matches
+// Existence and count assertions
 collector.expect_log_with_body("error occurred").assert_exists();
+collector.expect_span_with_name("ProcessOrder").assert_not_exists();
+collector.expect_metric_with_name("requests").assert_count(3);
+collector.expect_log().assert_at_least(10);
+collector.expect_span().assert_at_most(5);
 
-// Assert no logs match (negative assertion)
-collector.expect_log_with_body("password=secret").assert_not_exists();
-
-// Assert exact count
-collector.expect_log_with_body("retry attempt").assert_count(3);
-
-// Assert minimum
-collector.expect_log_with_body("cache hit").assert_at_least(10);
-
-// Assert maximum
-collector.expect_log_with_body("WARNING").assert_at_most(5);
-
-// Assert on severity levels
-use mock_collector::SeverityNumber;
-
+// Attribute matching (same API for all signal types)
 collector
-    .expect_log()
-    .with_severity(SeverityNumber::Error)
-    .assert_count(2);
-
-collector
-    .expect_log()
-    .with_severity(SeverityNumber::Debug)
+    .expect_log_with_body("User login")
+    .with_attributes([("user.id", "12345")])
+    .with_resource_attributes([("service.name", "auth-service")])
+    .with_scope_attributes([("scope.name", "user-auth")])
     .assert_exists();
 
-// Combine severity with other criteria
+// Severity assertions (logs only)
+use mock_collector::SeverityNumber;
 collector
     .expect_log_with_body("Connection failed")
     .with_severity(SeverityNumber::Error)
-    .with_resource_attributes([("service.name", "api")])
     .assert_exists();
-```
 
-### Trace Assertions
-
-Span assertions use the same fluent API:
-
-```rust
-// Assert at least one span matches
-collector.expect_span_with_name("ProcessOrder").assert_exists();
-
-// Assert no spans match (negative assertion)
-collector.expect_span_with_name("deprecated.operation").assert_not_exists();
-
-// Assert exact count
-collector.expect_span_with_name("database.query").assert_count(5);
-
-// Assert minimum
-collector.expect_span_with_name("cache.lookup").assert_at_least(10);
-
-// Assert maximum
-collector.expect_span_with_name("external.api.call").assert_at_most(3);
-```
-
-### Metric Assertions
-
-Metric assertions use the same fluent API:
-
-```rust
-// Assert at least one metric matches
-collector.expect_metric_with_name("http_requests_total").assert_exists();
-
-// Assert no metrics match (negative assertion)
-collector.expect_metric_with_name("deprecated_metric").assert_not_exists();
-
-// Assert exact count
-collector.expect_metric_with_name("db_connections").assert_count(1);
-
-// Assert minimum
-collector.expect_metric_with_name("cache_hits").assert_at_least(5);
-
-// Assert maximum
-collector.expect_metric_with_name("errors_total").assert_at_most(2);
+// Inspection methods
+let count = collector.expect_log_with_body("error").count();
+let matching = collector.expect_span_with_name("query").get_all();
+println!("{}", collector.dump());
 ```
 
 ### Histogram and Summary Assertions
@@ -289,16 +175,14 @@ collector.expect_metric_with_name("errors_total").assert_at_most(2);
 For histogram and summary metrics, use type-specific assertion builders:
 
 ```rust
-// Histogram assertions
 collector
     .expect_histogram("http_request_duration")
     .with_attributes([("method", "GET")])
     .with_count_gte(100)
     .with_sum_gte(5000.0)
-    .with_bucket_count_gte(2, 50)  // bucket index 2 has >= 50 observations
+    .with_bucket_count_gte(2, 50)
     .assert_exists();
 
-// Summary assertions with quantile checks
 collector
     .expect_summary("response_time")
     .with_count_gte(100)
@@ -306,7 +190,6 @@ collector
     .with_quantile_lte(0.99, 500.0)  // p99 <= 500ms
     .assert_exists();
 
-// Exponential histogram assertions
 collector
     .expect_exponential_histogram("latency")
     .with_count_gte(100)
@@ -315,89 +198,9 @@ collector
     .assert_exists();
 ```
 
-### Matching Criteria
-
-All three signals (logs, spans, and metrics) support matching on attributes, resource attributes, and scope attributes:
-
-```rust
-// Logs
-collector
-    .expect_log_with_body("User login")
-    .with_attributes([
-        ("user.id", "12345"),
-        ("auth.method", "oauth2"),
-    ])
-    .with_resource_attributes([
-        ("service.name", "auth-service"),
-        ("deployment.environment", "production"),
-    ])
-    .with_scope_attributes([
-        ("scope.name", "user-authentication"),
-    ])
-    .assert_exists();
-
-// Spans (same API!)
-collector
-    .expect_span_with_name("AuthenticateUser")
-    .with_attributes([
-        ("user.id", "12345"),
-        ("auth.provider", "google"),
-    ])
-    .with_resource_attributes([
-        ("service.name", "auth-service"),
-    ])
-    .with_scope_attributes([
-        ("library.name", "auth-lib"),
-    ])
-    .assert_exists();
-
-// Metrics (same API!)
-collector
-    .expect_metric_with_name("http_requests_total")
-    .with_attributes([
-        ("method", "POST"),
-        ("status", "200"),
-    ])
-    .with_resource_attributes([
-        ("service.name", "api-gateway"),
-    ])
-    .with_scope_attributes([
-        ("meter.name", "http-metrics"),
-    ])
-    .assert_exists();
-```
-
-### Inspection Methods
-
-```rust
-// Get counts
-let log_count = collector.log_count();
-let span_count = collector.span_count();
-let metric_count = collector.metric_count();
-
-// Get matching items
-let log_assertion = collector.expect_log_with_body("error");
-let matching_logs = log_assertion.get_all();
-let log_match_count = log_assertion.count();
-
-let span_assertion = collector.expect_span_with_name("database.query");
-let matching_spans = span_assertion.get_all();
-let span_match_count = span_assertion.count();
-
-let metric_assertion = collector.expect_metric_with_name("requests_total");
-let matching_metrics = metric_assertion.get_all();
-let metric_match_count = metric_assertion.count();
-
-// Clear all collected data (logs, spans, AND metrics)
-collector.clear();
-
-// Debug dump all data
-println!("{}", collector.dump());
-```
-
 ## Sharing a Collector
 
-You can share a collector between multiple servers or inspect logs without starting a server:
+You can share a collector between multiple servers or inspect data without starting a server:
 
 ```rust
 use std::sync::Arc;
@@ -406,20 +209,20 @@ use mock_collector::{MockCollector, MockServer, Protocol};
 
 let collector = Arc::new(RwLock::new(MockCollector::new()));
 
-// Start multiple servers with the same collector
-let grpc_server = MockServer::with_collector(
-    Protocol::Grpc,
-    4317,
-    collector.clone()
-).start().await?;
+let grpc_server = MockServer::builder()
+    .protocol(Protocol::Grpc)
+    .port(4317)
+    .collector(collector.clone())
+    .start()
+    .await?;
 
-let http_server = MockServer::with_collector(
-    Protocol::HttpJson,
-    4318,
-    collector.clone()
-).start().await?;
+let http_server = MockServer::builder()
+    .protocol(Protocol::HttpJson)
+    .port(4318)
+    .collector(collector.clone())
+    .start()
+    .await?;
 
-// Access the collector directly
 let log_count = collector.read().await.log_count();
 ```
 
