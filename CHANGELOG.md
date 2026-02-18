@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.9](https://github.com/djvcom/mock-collector/compare/v0.2.8...v0.2.9) - 2026-02-18
+
+### Bug Fixes
+
+- *(deps)* update bytes to 1.11.1 to resolve RUSTSEC-2026-0007
+- *(ci)* trigger release on merge from release-plz branches
+
+### Refactoring
+
+- *(collector)* split monolithic module and reduce duplication
+
 ## [0.2.8](https://github.com/djvcom/mock-collector/compare/v0.2.7...v0.2.8) - 2026-01-13
 
 ## [0.2.7](https://github.com/djvcom/mock-collector/compare/v0.2.6...v0.2.7) - 2025-12-30
