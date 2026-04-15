@@ -791,7 +791,10 @@ impl HttpProtocol {
     ) -> Result<T, MockServerError> {
         match self {
             HttpProtocol::Json => {
-                serde_json::from_slice(body).map_err(MockServerError::JsonParseError)
+                let mut json_value: serde_json::Value =
+                    serde_json::from_slice(body).map_err(MockServerError::JsonParseError)?;
+                crate::json::normalise_json_uint64s(&mut json_value);
+                serde_json::from_value(json_value).map_err(MockServerError::JsonParseError)
             }
             HttpProtocol::Binary => {
                 <T as prost::Message>::decode(body).map_err(MockServerError::ProtobufParseError)

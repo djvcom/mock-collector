@@ -141,6 +141,7 @@
 
 mod collector;
 mod error;
+mod json;
 mod server;
 
 pub use collector::{
@@ -148,6 +149,7 @@ pub use collector::{
     MockCollector, SpanAssertion, SummaryAssertion, TestLogRecord, TestMetric, TestSpan,
 };
 pub use error::MockServerError;
+pub use json::normalise_json_uint64s;
 pub use opentelemetry_otlp::Protocol;
 pub use opentelemetry_proto::tonic::logs::v1::SeverityNumber;
 pub use server::{MockServer, MockServerBuilder, ServerHandle};

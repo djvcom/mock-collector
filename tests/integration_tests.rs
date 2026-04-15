@@ -1,6 +1,6 @@
 #![allow(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
-use mock_collector::{MockServer, MockServerError, Protocol};
+use mock_collector::{MockServer, MockServerError, Protocol, normalise_json_uint64s};
 use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
@@ -521,12 +521,18 @@ async fn test_http_protobuf_metrics_with_official_example() {
         .await
         .expect("Failed to start server");
 
-    // Load and parse JSON example
+    // Load JSON example, normalise string-encoded uint64 fields, then parse.
+    // The protobuf JSON spec encodes uint64/fixed64 as strings, but
+    // opentelemetry-proto's serde does not handle this for all fields.
     let example_json = fs::read_to_string(example_path("metrics.json"))
         .expect("Failed to read metrics.json example");
 
-    let metrics_request: opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest =
+    let mut json_value: serde_json::Value =
         serde_json::from_str(&example_json).expect("Failed to parse JSON");
+    normalise_json_uint64s(&mut json_value);
+
+    let metrics_request: opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest =
+        serde_json::from_value(json_value).expect("Failed to deserialise metrics request");
 
     // Convert to protobuf bytes
     use prost::Message;
