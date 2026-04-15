@@ -1,3 +1,4 @@
 [submodule "opentelemetry-proto-examples"]
 	path = opentelemetry-proto-examples
 	url = https://github.com/open-telemetry/opentelemetry-proto.git
+	ignore = dirty
