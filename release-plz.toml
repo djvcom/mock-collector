@@ -11,6 +11,7 @@ commit_parsers = [
     { message = "^perf", group = "Performance" },
     { message = "^refactor", group = "Refactoring" },
     { message = "^docs", group = "Documentation" },
+    { message = "^chore\\(deps\\)", group = "Dependencies" },
     { message = "^chore", skip = true },
     { message = "^style", skip = true },
     { message = "^test", skip = true },
