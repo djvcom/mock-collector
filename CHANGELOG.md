@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.11](https://github.com/djvcom/mock-collector/compare/v0.2.10...v0.2.11) - 2026-04-15
+
+### Dependencies
+
+- *(deps)* update rustls-webpki and rand
+- *(deps)* bump the minor-and-patch group with 2 updates ([#54](https://github.com/djvcom/mock-collector/pull/54))
+- *(deps)* bump tokio in the minor-and-patch group ([#52](https://github.com/djvcom/mock-collector/pull/52))
+
+### Features
+
+- normalise string-encoded uint64s in OTLP JSON
+
 ## [0.2.10](https://github.com/djvcom/mock-collector/compare/v0.2.9...v0.2.10) - 2026-04-05
 
 ### Bug Fixes
