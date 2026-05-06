@@ -30,9 +30,10 @@
       devShells = forAllSystems (pkgs: {
         default = pkgs.mkShell {
           packages = with pkgs; [
-            # Rust toolchain
             (rust-bin.stable.latest.default.override {
               extensions = [
+                "clippy"
+                "rustfmt"
                 "rust-src"
                 "rust-analyzer"
               ];
