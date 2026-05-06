@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.12](https://github.com/djvcom/mock-collector/compare/v0.2.11...v0.2.12) - 2026-05-06
+
+### Dependencies
+
+- *(deps)* bump rustls-webpki to 0.103.13
+- *(deps)* bump reqwest to 0.13.3
+- *(deps)* bump tower-http in the minor-and-patch group ([#62](https://github.com/djvcom/mock-collector/pull/62))
+- *(deps)* bump tokio in the minor-and-patch group ([#61](https://github.com/djvcom/mock-collector/pull/61))
+- *(deps)* bump tokio in the minor-and-patch group ([#59](https://github.com/djvcom/mock-collector/pull/59))
+
 ## [0.2.11](https://github.com/djvcom/mock-collector/compare/v0.2.10...v0.2.11) - 2026-04-15
 
 ### Dependencies
