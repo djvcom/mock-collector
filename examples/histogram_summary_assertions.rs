@@ -23,6 +23,7 @@ fn make_string_kv(key: &str, value: &str) -> KeyValue {
         value: Some(AnyValue {
             value: Some(any_value::Value::StringValue(value.to_string())),
         }),
+        ..Default::default()
     }
 }
 

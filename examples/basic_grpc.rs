@@ -36,6 +36,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                     value: Some(AnyValue {
                         value: Some(any_value::Value::StringValue("example-service".to_string())),
                     }),
+                    ..Default::default()
                 }],
                 dropped_attributes_count: 0,
                 ..Default::default()
@@ -64,6 +65,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             value: Some(AnyValue {
                                 value: Some(any_value::Value::StringValue("req-12345".to_string())),
                             }),
+                            ..Default::default()
                         }],
                         ..Default::default()
                     },

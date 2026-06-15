@@ -336,6 +336,7 @@ async fn test_span_event_assertions() {
                                         "100.00".to_string(),
                                     )),
                                 }),
+                                ..Default::default()
                             }],
                             dropped_attributes_count: 0,
                         },
@@ -349,6 +350,7 @@ async fn test_span_event_assertions() {
                                         "txn-12345".to_string(),
                                     )),
                                 }),
+                                ..Default::default()
                             }],
                             dropped_attributes_count: 0,
                         },
@@ -710,6 +712,7 @@ async fn test_severity_assertions() {
                     value: Some(AnyValue {
                         value: Some(any_value::Value::StringValue("test-service".to_string())),
                     }),
+                    ..Default::default()
                 }],
                 dropped_attributes_count: 0,
                 ..Default::default()
@@ -1033,6 +1036,7 @@ async fn test_wait_until_with_predicate() {
                             value: Some(AnyValue {
                                 value: Some(any_value::Value::StringValue("critical".to_string())),
                             }),
+                            ..Default::default()
                         }],
                         ..Default::default()
                     }],
@@ -1172,6 +1176,7 @@ async fn test_log_with_resource_attributes_grpc() {
                     value: Some(AnyValue {
                         value: Some(any_value::Value::StringValue("unknown_service".to_string())),
                     }),
+                    ..Default::default()
                 }],
                 dropped_attributes_count: 0,
                 ..Default::default()
@@ -1283,18 +1288,21 @@ async fn test_log_with_multiple_resource_attributes() {
                                 "unknown_service".to_string(),
                             )),
                         }),
+                        ..Default::default()
                     },
                     KeyValue {
                         key: "telemetry.sdk.language".to_string(),
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("rust".to_string())),
                         }),
+                        ..Default::default()
                     },
                     KeyValue {
                         key: "telemetry.sdk.version".to_string(),
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("0.28.0".to_string())),
                         }),
+                        ..Default::default()
                     },
                 ],
                 dropped_attributes_count: 0,
@@ -1361,24 +1369,28 @@ async fn test_log_with_resource_attributes_http_binary() {
                                 "unknown_service".to_string(),
                             )),
                         }),
+                        ..Default::default()
                     },
                     KeyValue {
                         key: "telemetry.sdk.name".to_string(),
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("opentelemetry".to_string())),
                         }),
+                        ..Default::default()
                     },
                     KeyValue {
                         key: "telemetry.sdk.language".to_string(),
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("rust".to_string())),
                         }),
+                        ..Default::default()
                     },
                     KeyValue {
                         key: "telemetry.sdk.version".to_string(),
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("0.31.0".to_string())),
                         }),
+                        ..Default::default()
                     },
                 ],
                 dropped_attributes_count: 0,
@@ -1454,24 +1466,28 @@ async fn test_log_resource_attributes_with_non_string_values() {
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("my-service".to_string())),
                         }),
+                        ..Default::default()
                     },
                     KeyValue {
                         key: "process.pid".to_string(),
                         value: Some(AnyValue {
                             value: Some(any_value::Value::IntValue(12345)),
                         }),
+                        ..Default::default()
                     },
                     KeyValue {
                         key: "enabled".to_string(),
                         value: Some(AnyValue {
                             value: Some(any_value::Value::BoolValue(true)),
                         }),
+                        ..Default::default()
                     },
                     KeyValue {
                         key: "ratio".to_string(),
                         value: Some(AnyValue {
                             value: Some(any_value::Value::DoubleValue(0.5)),
                         }),
+                        ..Default::default()
                     },
                 ],
                 dropped_attributes_count: 0,

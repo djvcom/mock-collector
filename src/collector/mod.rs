@@ -346,6 +346,7 @@ mod tests {
                 value: Some(AnyValue {
                     value: Some(any_value::Value::StringValue("value".to_string())),
                 }),
+                ..Default::default()
             }],
         }));
         assert_eq!(format_any_value(&value), "{nested=\"value\"}");
@@ -373,6 +374,7 @@ mod tests {
         let attrs = vec![KeyValue {
             key: "service.name".to_string(),
             value: make_any_value(any_value::Value::StringValue("my-service".to_string())),
+            ..Default::default()
         }];
         assert_eq!(
             format_attributes(&attrs, 5),
@@ -386,10 +388,12 @@ mod tests {
             KeyValue {
                 key: "key1".to_string(),
                 value: make_any_value(any_value::Value::StringValue("val1".to_string())),
+                ..Default::default()
             },
             KeyValue {
                 key: "key2".to_string(),
                 value: make_any_value(any_value::Value::IntValue(42)),
+                ..Default::default()
             },
         ];
         assert_eq!(format_attributes(&attrs, 5), "{key1=\"val1\", key2=42}");
@@ -401,18 +405,22 @@ mod tests {
             KeyValue {
                 key: "a".to_string(),
                 value: make_any_value(any_value::Value::IntValue(1)),
+                ..Default::default()
             },
             KeyValue {
                 key: "b".to_string(),
                 value: make_any_value(any_value::Value::IntValue(2)),
+                ..Default::default()
             },
             KeyValue {
                 key: "c".to_string(),
                 value: make_any_value(any_value::Value::IntValue(3)),
+                ..Default::default()
             },
             KeyValue {
                 key: "d".to_string(),
                 value: make_any_value(any_value::Value::IntValue(4)),
+                ..Default::default()
             },
         ];
         assert_eq!(format_attributes(&attrs, 2), "{a=1, b=2, ... +2}");
