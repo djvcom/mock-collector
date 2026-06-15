@@ -28,6 +28,7 @@ pub(crate) fn format_any_value(value: &Option<AnyValue>) -> String {
                 format!("{{{}}}", items.join(", "))
             }
             Some(AnyValueInner::BytesValue(b)) => format!("<bytes: {} bytes>", b.len()),
+            Some(AnyValueInner::StringValueStrindex(i)) => format!("<strindex: {}>", i),
             None => "<empty>".to_string(),
         },
         None => "<none>".to_string(),

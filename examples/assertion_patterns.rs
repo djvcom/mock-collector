@@ -42,6 +42,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             value: Some(AnyValue {
                                 value: Some(any_value::Value::StringValue("web-api".to_string())),
                             }),
+                            ..Default::default()
                         },
                         KeyValue {
                             key: "environment".to_string(),
@@ -50,6 +51,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                     "production".to_string(),
                                 )),
                             }),
+                            ..Default::default()
                         },
                     ],
                     dropped_attributes_count: 0,
@@ -71,6 +73,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 value: Some(AnyValue {
                                     value: Some(any_value::Value::StringValue("GET".to_string())),
                                 }),
+                                ..Default::default()
                             }],
                             ..Default::default()
                         },
@@ -112,6 +115,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("web-api".to_string())),
                         }),
+                        ..Default::default()
                     }],
                     dropped_attributes_count: 0,
                     ..Default::default()
@@ -131,6 +135,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                 value: Some(AnyValue {
                                     value: Some(any_value::Value::StringValue("200".to_string())),
                                 }),
+                                ..Default::default()
                             }],
                             events: vec![Event {
                                 time_unix_nano: 1500000,
@@ -142,6 +147,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             "users:all".to_string(),
                                         )),
                                     }),
+                                    ..Default::default()
                                 }],
                                 dropped_attributes_count: 0,
                             }],

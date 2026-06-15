@@ -39,12 +39,14 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("api-gateway".to_string())),
                         }),
+                        ..Default::default()
                     },
                     KeyValue {
                         key: "deployment.environment".to_string(),
                         value: Some(AnyValue {
                             value: Some(any_value::Value::StringValue("production".to_string())),
                         }),
+                        ..Default::default()
                     },
                 ],
                 dropped_attributes_count: 0,
@@ -69,6 +71,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     "GET".to_string(),
                                                 )),
                                             }),
+                                            ..Default::default()
                                         },
                                         KeyValue {
                                             key: "status".to_string(),
@@ -77,6 +80,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     "200".to_string(),
                                                 )),
                                             }),
+                                            ..Default::default()
                                         },
                                     ],
                                     value: Some(Value::AsInt(1523)),
@@ -91,6 +95,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     "POST".to_string(),
                                                 )),
                                             }),
+                                            ..Default::default()
                                         },
                                         KeyValue {
                                             key: "status".to_string(),
@@ -99,6 +104,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                                     "201".to_string(),
                                                 )),
                                             }),
+                                            ..Default::default()
                                         },
                                     ],
                                     value: Some(Value::AsInt(342)),
@@ -123,6 +129,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                                             "users".to_string(),
                                         )),
                                     }),
+                                    ..Default::default()
                                 }],
                                 value: Some(Value::AsDouble(125.5)),
                                 ..Default::default()
