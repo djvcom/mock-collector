@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.13](https://github.com/djvcom/mock-collector/compare/v0.2.12...v0.2.13) - 2026-06-15
+
+### Dependencies
+
+- *(deps)* bump opentelemetry to 0.32 and tower-http to 0.7
+- *(deps)* bump prost in the minor-and-patch group ([#75](https://github.com/djvcom/mock-collector/pull/75))
+- *(deps)* bump reqwest in the minor-and-patch group ([#73](https://github.com/djvcom/mock-collector/pull/73))
+- *(deps)* bump serde_json in the minor-and-patch group ([#72](https://github.com/djvcom/mock-collector/pull/72))
+- *(deps)* bump tower-http in the minor-and-patch group ([#71](https://github.com/djvcom/mock-collector/pull/71))
+- *(deps)* bump opentelemetry from 0.31.0 to 0.32.0 ([#68](https://github.com/djvcom/mock-collector/pull/68))
+- *(deps)* bump tokio in the minor-and-patch group ([#67](https://github.com/djvcom/mock-collector/pull/67))
+- *(deps)* bump tonic in the minor-and-patch group ([#66](https://github.com/djvcom/mock-collector/pull/66))
+- *(deps)* bump tower-http in the minor-and-patch group ([#65](https://github.com/djvcom/mock-collector/pull/65))
+
 ## [0.2.12](https://github.com/djvcom/mock-collector/compare/v0.2.11...v0.2.12) - 2026-05-06
 
 ### Dependencies
