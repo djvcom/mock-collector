@@ -35,7 +35,7 @@ flate2 = "1.1.9"
 opentelemetry = "0.32.0"
 reqwest = { version = "0.13.4", features = ["json", "rustls"], default-features = false }
 tracing = "0.1.44"
-zstd = "0.13.3"
+zstd = "0.14.0"
 
 [lints.clippy]
 unwrap_used = "deny"
