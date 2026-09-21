@@ -838,7 +838,7 @@ version = "0.2.14"
 dependencies = [
  "axum",
  "flate2",
- "opentelemetry 0.32.0",
+ "opentelemetry 0.33.0",
  "opentelemetry-otlp",
  "opentelemetry-proto 0.33.0",
  "prost",
@@ -886,7 +886,6 @@ dependencies = [
  "js-sys",
  "pin-project-lite",
  "thiserror",
- "tracing",
 ]
 
 [[package]]
