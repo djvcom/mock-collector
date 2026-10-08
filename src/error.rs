@@ -28,4 +28,7 @@ pub enum MockServerError {
 
     #[error("Timed out after {0:?} waiting for condition")]
     WaitTimeout(std::time::Duration),
+
+    #[error("Unsupported protocol: {0:?}")]
+    UnsupportedProtocol(opentelemetry_otlp::Protocol),
 }

@@ -210,12 +210,14 @@ impl MockServer {
     ///
     /// # Errors
     ///
-    /// Returns an error if the server fails to bind to the specified address.
+    /// Returns an error if the server fails to bind to the specified address,
+    /// or if the protocol is not supported.
     pub async fn start(self) -> Result<ServerHandle, MockServerError> {
         match self.protocol {
             Protocol::Grpc => self.start_grpc().await,
             Protocol::HttpBinary => self.start_http_binary().await,
             Protocol::HttpJson => self.start_http_json().await,
+            unsupported => Err(MockServerError::UnsupportedProtocol(unsupported)),
         }
     }
 
