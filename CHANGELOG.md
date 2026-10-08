@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.15](https://github.com/djvcom/mock-collector/compare/v0.2.14...v0.2.15) - 2026-10-08
+
+### Bug Fixes
+
+- *(deps)* update lockfile for security advisories
+- *(deps)* bump opentelemetry-otlp to 0.33
+
+### Dependencies
+
+- *(deps)* bump tokio ([#96](https://github.com/djvcom/mock-collector/pull/96))
+- *(deps)* bump thiserror in the minor-and-patch group ([#94](https://github.com/djvcom/mock-collector/pull/94))
+- *(deps)* bump opentelemetry from 0.32.0 to 0.33.0 ([#93](https://github.com/djvcom/mock-collector/pull/93))
+- *(deps)* bump opentelemetry-proto from 0.32.0 to 0.33.0 ([#92](https://github.com/djvcom/mock-collector/pull/92))
+- *(deps)* bump reqwest in the minor-and-patch group ([#90](https://github.com/djvcom/mock-collector/pull/90))
+- *(deps)* bump zstd from 0.13.3 to 0.14.0 ([#89](https://github.com/djvcom/mock-collector/pull/89))
+
 ## [0.2.13](https://github.com/djvcom/mock-collector/compare/v0.2.12...v0.2.13) - 2026-06-15
 
 ### Dependencies
